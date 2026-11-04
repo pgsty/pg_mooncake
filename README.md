@@ -20,7 +20,8 @@
 
 ### Option 1: Docker
 
-For new users, we recommend using the Docker image to get started quickly:
+The upstream image below is a legacy distribution. It does not contain this
+fork's DuckDB 2.0 compatibility changes; use the source build for those changes.
 ```bash
 docker run --name mooncake --rm -e POSTGRES_PASSWORD=password mooncakelabs/pg_mooncake
 ```
@@ -32,28 +33,91 @@ docker exec -it mooncake psql -U postgres
 
 ### Option 2: From Source
 
+This fork targets **PostgreSQL 18, pg_duckdb 1.2.0 and DuckDB 2.0.0**.
+The DuckDB Mooncake extension must be rebuilt along with this upgrade: a binary
+compiled for DuckDB 1.4.x cannot be loaded by DuckDB 2.0.
+
 To build pg_mooncake, first install [Rust][rust-install], [pgrx][pgrx-install], and [the build tools for DuckDB][duckdb-install].
+On Ubuntu 24.04, the additional native dependencies are:
+
+```bash
+sudo apt-get install build-essential cmake ninja-build pkg-config libclang-dev \
+    libssl-dev libcurl4-openssl-dev liblz4-dev protobuf-compiler postgresql-server-dev-18
+cargo install --locked cargo-pgrx --version 0.16.1
+```
 
 Then, clone the repository:
 ```bash
-git clone --recurse-submodules https://github.com/Mooncake-Labs/pg_mooncake.git
+git clone --recurse-submodules https://github.com/pgsty/pg_mooncake.git
+cd pg_mooncake
 ```
 
-To build and install for Postgres versions 14-18, run:
+To build and install for PostgreSQL 18, run:
 ```bash
-cargo pgrx init --pg18=$(which pg_config)   # Replace with your Postgres version
-make pg_duckdb                              # Skip if pg_duckdb is already installed
-make install PG_VERSION=pg18
+cargo pgrx init --pg18=/usr/lib/postgresql/18/bin/pg_config
+make pg_duckdb PG_VERSION=pg18 JOBS=4       # Skip if pg_duckdb 1.2.0 is already installed
+make install PG_VERSION=pg18 JOBS=4
 ```
 
-Finally, add pg_mooncake to `shared_preload_libraries` in your `postgresql.conf` file and enable logical replication:
+The install step also builds `mooncake.duckdb_extension` and installs a local
+DuckDB extension repository under `$(pg_config --sharedir)/extension/pg_mooncake`.
+CMake downloads pinned nanoarrow, Corrosion and CRoaring sources when needed.
+The Rust RPC client is pinned to the server's base Moonlink revision. This fork
+also includes a Moonlink fix for snapshot requests whose database LSN is ahead
+of the last change to the mirrored table, and sets `REPLICA IDENTITY FULL` on
+existing leaf partitions before replication starts. The RPC protocol is unchanged.
+
+`make package PG_VERSION=pg18` stages both the PostgreSQL extension and the
+DuckDB extension repository under `target/release/pg_mooncake-pg18/`.
+
+Finally, configure PostgreSQL and restart it. On Ubuntu with PostgreSQL 18:
 ```ini
 duckdb.allow_community_extensions = true
+duckdb.allow_unsigned_extensions = true
+mooncake.extension_repository = '/usr/share/postgresql/18/extension/pg_mooncake'
 shared_preload_libraries = 'pg_duckdb,pg_mooncake'
 wal_level = logical
 ```
 
-For a complete walkthrough, refer to our [Dockerfile][dockerfile-link].
+The unsigned-extension setting is required for the locally built DuckDB extension.
+Set `mooncake.extension_repository` to the matching installation path if your
+PostgreSQL installation uses a different prefix. When this setting is absent,
+extension creation retains the upstream behavior of using the community repository.
+
+The existing [Dockerfile][dockerfile-link] describes the legacy upstream build
+and has not been validated for this fork.
+
+### Testing the source build
+
+Use a disposable database on a PostgreSQL instance configured as above. Run the
+existing SQL regression suite with `pg_regress`, then the integration test
+(Python 3 and `psycopg` 3 are required):
+
+```bash
+export PGHOST=/var/run/postgresql PGPORT=5432 PGUSER=postgres
+make test PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config
+createdb mooncake_integration
+PGDATABASE=mooncake_integration psql -c 'CREATE EXTENSION pg_mooncake CASCADE'
+PGDATABASE=mooncake_integration python3 tests/integration.py
+# Restart the test PostgreSQL instance, then:
+PGDATABASE=mooncake_integration python3 tests/integration.py --after-restart
+```
+
+The integration test compares the mirror with PostgreSQL heap tables before and
+after changes, snapshots, compaction and restart. It also checks filtered scans,
+aggregates, joins, prepared statements, empty tables and cleanup.
+
+`mooncake.load_files` is unimplemented in the bundled Moonlink source. This fork
+returns `FEATURE_NOT_SUPPORTED` instead of silently acknowledging an import.
+Partitions added after mirror creation must also have `REPLICA IDENTITY FULL`
+set before they receive writes; automatic handling of later partition DDL is
+not covered by this validation.
+`TRUNCATE` replication is also outside the supported/tested scope. The validation
+target is Ubuntu 24.04 ARM64 with PostgreSQL 18; other OS/architecture and
+PostgreSQL combinations require their own validation.
+
+See the [u24a / PostgreSQL 18 validation report](docs/duckdb-2-validation.md)
+for pinned revisions, test results, reproduction commands and remaining limits.
 
 ## Quick Start
 

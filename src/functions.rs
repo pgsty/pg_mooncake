@@ -119,14 +119,14 @@ fn list_tables() -> TableIterator<
 CREATE PROCEDURE mooncake.load_files(dst text, files text[]) LANGUAGE c AS 'MODULE_PATHNAME', '@FUNCTION_NAME@';
 ")]
 fn load_files(dst: &str, files: Vec<String>) {
-    let dst = parse_table(dst);
-    block_on(moonlink_rpc::load_files(
-        &mut *get_stream(),
-        DATABASE.clone(),
-        dst,
-        files,
-    ))
-    .expect("load_files failed");
+    // Moonlink's current RPC handler is a no-op. Never acknowledge an import
+    // that did not ingest any data.
+    let _ = (dst, files);
+    pgrx::ereport!(
+        pgrx::PgLogLevel::ERROR,
+        pgrx::PgSqlErrorCode::ERRCODE_FEATURE_NOT_SUPPORTED,
+        "mooncake.load_files is not implemented by the bundled Moonlink version"
+    );
 }
 
 #[pg_extern(sql = "
