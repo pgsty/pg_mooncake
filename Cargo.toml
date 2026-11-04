@@ -1,14 +1,10 @@
 [package]
 name = "pg_mooncake"
-version = "0.2.0"
+version = "1.2.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-
-[[bin]]
-name = "pgrx_embed_pg_mooncake"
-path = "./src/bin/pgrx_embed.rs"
 
 [features]
 default = ["bgworker", "pg18"]
@@ -24,7 +20,7 @@ bincode = "2"
 moonlink_rpc.path = "moonlink/src/moonlink_rpc"
 moonlink_service = { path = "moonlink/src/moonlink_service", optional = true }
 native-tls = "0.2"
-pgrx = "=0.16.1"
+pgrx = "=0.19.3"
 postgres = { git = "https://github.com/Mooncake-Labs/rust-postgres.git", rev = "14c8e599f5551a8caa96ff5023685a6f537a1455" }
 postgres-native-tls = { git = "https://github.com/Mooncake-Labs/rust-postgres.git", rev = "14c8e599f5551a8caa96ff5023685a6f537a1455" }
 regex = "1"

@@ -6,11 +6,11 @@ DUCKDB_VERSION := v2.0.0
 MOONCAKE_BUILD := duckdb_mooncake/build/release
 MOONCAKE_REPOSITORY ?= $(shell $(PG_CONFIG) --sharedir)/extension/pg_mooncake
 PACKAGE_DIR ?= $(CURDIR)/target/release/pg_mooncake-$(PG_VERSION)
-PGRX_FLAGS = --no-default-features --features $(PG_VERSION),bgworker --pg-config $(PG_CONFIG)
+PGRX_FLAGS = --no-default-features --features $(PG_VERSION),bgworker --pg-config $(PG_CONFIG) --cargo=--locked
 REGRESS_DB ?= mooncake_regress
 MAKEFLAGS += --no-print-directory
 
-.PHONY: help clean duckdb_mooncake format install install-duckdb-mooncake package pg_duckdb run test
+.PHONY: help clean check-versions duckdb_mooncake format install install-duckdb-mooncake package pg_duckdb run test
 
 help:
 	@echo "Usage: make <COMMAND> [OPTIONS]"
@@ -32,7 +32,10 @@ help:
 clean:
 	@cargo clean
 
-duckdb_mooncake:
+check-versions:
+	python3 scripts/check_versions.py --check-toolchain
+
+duckdb_mooncake: check-versions
 	cmake -S duckdb_mooncake/duckdb -B $(MOONCAKE_BUILD) -G Ninja \
 		-DCMAKE_BUILD_TYPE=Release -DOVERRIDE_GIT_DESCRIBE=$(DUCKDB_VERSION) \
 		-DDUCKDB_EXTENSION_CONFIGS=$(CURDIR)/duckdb_mooncake/extension_config.cmake \
@@ -57,7 +60,7 @@ package: duckdb_mooncake
 	install -m 644 $(MOONCAKE_BUILD)/extension/mooncake/mooncake.duckdb_extension \
 		"$(PACKAGE_DIR)$(MOONCAKE_REPOSITORY)/$(DUCKDB_VERSION)/$$(cat $(MOONCAKE_BUILD)/duckdb_platform_out)/"
 
-pg_duckdb:
+pg_duckdb: check-versions
 	@$(MAKE) -C pg_duckdb install -j$(JOBS)
 
 run: pg_duckdb

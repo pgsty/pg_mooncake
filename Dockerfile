@@ -13,7 +13,7 @@ RUN curl https://sh.rustup.rs | sh -s -- -y
 
 ENV PATH="/root/.cargo/bin:$PATH"
 
-RUN cargo install --locked cargo-pgrx@0.16.1 \
+RUN cargo install --locked cargo-pgrx@0.19.3 \
  && cargo pgrx init --pg18=$(which pg_config)
 
 WORKDIR pg_mooncake

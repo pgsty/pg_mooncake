@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end tests against a disposable PG18 database (requires psycopg 3).
+"""End-to-end tests against a disposable PG17/18 database (requires psycopg 3).
 
 Run normally, restart PostgreSQL, then run with --after-restart. Connection
 parameters come from libpq's PGHOST/PGPORT/PGUSER/PGDATABASE environment variables.
@@ -15,6 +15,7 @@ import psycopg
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--after-restart", action="store_true")
+    parser.add_argument("--pg-major", type=int, choices=(17, 18), default=18)
     args = parser.parse_args()
     with psycopg.connect(autocommit=True, prepare_threshold=None) as conn:
         conn.execute("SET statement_timeout = '120s'")
@@ -32,7 +33,8 @@ def main():
 
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
         assert versions == [("1.2.0",)], versions
-        assert int(rows("SHOW server_version_num")[0][0]) // 10000 == 18
+        assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("1.2.0",)]
         assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.0",)]
         assert rows("""
             SELECT * FROM duckdb.query($$

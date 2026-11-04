@@ -1,5 +1,11 @@
 # DuckDB 2.0 validation on u24a / PostgreSQL 18
 
+This is the historical validation of commit `24a5018a157a8e05b69d6c7492522164622535c9`
+with pgrx 0.16.1 and pg_mooncake 0.2.0. Check out that commit and initialize its
+submodules to reproduce it. The subsequent pgrx 0.19.3 / pg_mooncake 1.2.0 update
+is covered by the [EL10 / PostgreSQL 17 report](el10a-pg17-validation.md);
+the newer dependency set has not been revalidated on u24a in this round.
+
 The updated source builds, installs and runs with pg_duckdb 1.2.0 and DuckDB
 2.0.0 on Ubuntu 24.04 ARM64. The validation covers initial replication, continued
 INSERT/UPDATE/DELETE replication, queries, snapshots, compaction, restart recovery

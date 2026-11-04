@@ -1,0 +1,20 @@
+{
+  "pg_mooncake": "1.2.0",
+  "pgrx": "0.19.3",
+  "pg_duckdb": {
+    "version": "1.2.0",
+    "revision": "8756099e267c47f0b86c24de4cf995327f1f4279"
+  },
+  "duckdb": {
+    "version": "v2.0.0",
+    "revision": "d54cbbe3df17e8e5ce68312f483b4155836112aa"
+  },
+  "duckdb_mooncake": {
+    "version": "v0.0.2",
+    "revision": "49765a369ad88986916ce53c969ed2ce4ba66fac"
+  },
+  "moonlink": {
+    "version": "0.0.1",
+    "revision": "b298ef7444890e3c8af5544e350232518bcfd8e5"
+  }
+}
