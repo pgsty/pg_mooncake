@@ -1,5 +1,5 @@
 {
-  "pg_mooncake": "1.2.0",
+  "pg_mooncake": "0.3.0",
   "pgrx": "0.19.3",
   "pg_duckdb": {
     "version": "1.2.0",
@@ -11,10 +11,12 @@
   },
   "duckdb_mooncake": {
     "version": "v0.0.2",
+    "tag": "v0.0.2",
     "revision": "49765a369ad88986916ce53c969ed2ce4ba66fac"
   },
   "moonlink": {
     "version": "0.0.1",
+    "tag": "v0.0.1",
     "revision": "b298ef7444890e3c8af5544e350232518bcfd8e5"
   }
 }

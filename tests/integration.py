@@ -34,7 +34,7 @@ def main():
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
         assert versions == [("1.2.0",)], versions
         assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
-        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("1.2.0",)]
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.0",)]
         assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.0",)]
         assert rows("""
             SELECT * FROM duckdb.query($$

@@ -33,13 +33,27 @@ docker exec -it mooncake psql -U postgres
 
 ### Option 2: From Source
 
-This fork's **pg_mooncake 1.2.0** requires **pg_duckdb 1.2.0 and DuckDB 2.0.0**.
-Its release version follows pg_duckdb. `versions.json` records the exact submodule
-commits, both DuckDB source revisions, and pgrx/cargo-pgrx **0.19.3**. Builds check
+This fork's **pg_mooncake 0.3.0** requires **pg_duckdb 1.2.0 and DuckDB 2.0.0**.
+pg_mooncake has its own release version. `versions.json` records the dependency
+tags, exact submodule commits, both DuckDB source revisions, and
+pgrx/cargo-pgrx **0.19.3**. Builds check
 these pins and use Cargo lockfiles; extension creation rejects a different
 installed pg_duckdb version.
 The DuckDB Mooncake extension must be rebuilt along with this upgrade: a binary
 compiled for DuckDB 1.4.x cannot be loaded by DuckDB 2.0.
+
+The dependencies are [duckdb_mooncake v0.0.2](https://github.com/pgsty/duckdb_mooncake/tree/v0.0.2)
+and [Moonlink v0.0.1](https://github.com/pgsty/moonlink/tree/v0.0.1). Their Git
+submodules remain pinned to the full commits recorded in `versions.json`; the
+FFI client's Moonlink revision matches the server. For an existing checkout,
+fetch these tags before running the version check:
+
+```bash
+git submodule sync --recursive
+git submodule update --init --recursive
+git -C duckdb_mooncake fetch origin tag v0.0.2
+git -C moonlink fetch origin tag v0.0.1
+```
 
 To build pg_mooncake, first install [Rust][rust-install], [pgrx][pgrx-install], and [the build tools for DuckDB][duckdb-install].
 On Ubuntu 24.04, the additional native dependencies are:
@@ -137,17 +151,22 @@ tested. Other combinations require their own validation.
 
 See the [u24a / PostgreSQL 18 validation report](docs/duckdb-2-validation.md)
 for pinned revisions, test results, reproduction commands and remaining limits.
-The current pgrx 0.19.3 release is covered by the
-[EL10 / PostgreSQL 17 report](docs/el10a-pg17-validation.md) and the
-[dependency audit](docs/dependency-audit-2026-11-05.md).
+The 0.3.0 release is covered by the
+[EL10 / PostgreSQL 17 rebuild report](docs/pg-mooncake-0.3.0-validation.md).
+The earlier [EL10 / PostgreSQL 17 report](docs/el10a-pg17-validation.md) covers
+the same pgrx 0.19.3 dependency set under the former development version.
+The [dependency audit](docs/dependency-audit-2026-11-05.md) records the security
+updates and remaining advisories.
 
 ### Updating dependencies
 
-For a new pg_duckdb release, advance pg_mooncake's version with it, update
-`versions.json`, the submodule commits, the SQL version guard and the test
-expectations together. Both DuckDB submodules must match pg_duckdb's DuckDB
+For a new pg_duckdb release, choose the next pg_mooncake release version and
+update `versions.json`, the submodule commits, the SQL version guard and the test
+expectations together. The two PostgreSQL extensions have independent version
+numbers. Both DuckDB submodules must match pg_duckdb's DuckDB
 revision. Pin the DuckDB extension's Moonlink RPC client to the same Moonlink
-commit as the server, regenerate the affected Cargo lockfiles, then rerun
+commit as the server, tag each changed dependency, update its tag and commit in
+`versions.json`, regenerate the affected Cargo lockfiles, then rerun
 `make check-versions` and the build/integration tests. Source archives lack Git
 metadata, so their commit pins must be verified before archiving.
 

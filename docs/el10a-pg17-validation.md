@@ -1,5 +1,10 @@
 # pg_mooncake 1.2.0: EL10 ARM64 / PostgreSQL 17 validation
 
+This historical report describes commit `cf193c1`, which used 1.2.0 as the
+development version. The extension now uses its own 0.3.0 release version;
+see the [0.3.0 rebuild report](pg-mooncake-0.3.0-validation.md). pg_duckdb remains
+pinned to 1.2.0, and the dependency source commits are unchanged.
+
 On November 5, 2026, the pinned source built, installed, packaged and passed the
 functional and restart checks below on EL10 ARM64 / PostgreSQL 17. This run uses
 pgrx 0.19.3 and the security updates recorded in the

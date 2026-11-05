@@ -3592,7 +3592,7 @@ dependencies = [
 
 [[package]]
 name = "pg_mooncake"
-version = "1.2.0"
+version = "0.3.0"
 dependencies = [
  "bincode",
  "moonlink_rpc",
