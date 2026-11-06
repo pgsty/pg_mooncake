@@ -1,12 +1,28 @@
-<div align=center>
-<h1 align=center>pg_mooncake 🥮</h1>
-<h4 align=center>Real-time analytics on Postgres tables</h4>
+# pg_mooncake
 
-[![][docs-shield]][docs-link]
-[![][license-shield]][license-link]
-[![][slack-shield]][slack-link]
-[![][x-shield]][x-link]
-</div>
+[![Website: mooncake.pgsty.com](https://img.shields.io/badge/Website-mooncake.pgsty.com-slategray?style=flat&logo=cilium&logoColor=white)](https://mooncake.pgsty.com/)
+[![Docs: pg_mooncake](https://img.shields.io/badge/Docs-pg__mooncake-slategray?style=flat)](https://mooncake.pgsty.com/docs/)
+[![Catalog: pg_mooncake](https://img.shields.io/badge/Catalog-pg__mooncake-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
+[![Version: v0.3.0](https://img.shields.io/badge/Version-v0.3.0-slategray?style=flat)](https://github.com/pgsty/pg_mooncake/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-slategray?style=flat&logo=opensourceinitiative&logoColor=green)](https://github.com/pgsty/pg_mooncake/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/pgsty/pg_mooncake?style=flat&logo=github&logoColor=black&color=slategray)](https://star-history.com/#pgsty/pg_mooncake&Date)
+[![PostgreSQL: 14-18](https://img.shields.io/badge/PostgreSQL-14--18-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
+
+**`pg_mooncake`** is a PostgreSQL extension that creates a real-time columnstore mirror of your PostgreSQL tables in [Apache Iceberg][iceberg-link], enabling sub-second vectorized analytical queries powered by [`moonlink`][moonlink-link], [`duckdb_mooncake`][duckdb-mooncake-link], and [`pg_duckdb`][pgduckdb-link].
+
+[Website](https://mooncake.pgsty.com/) | [Documentation][docs-link] | [moonlink][moonlink-link] | [duckdb_mooncake][duckdb-mooncake-link] | [Blog](https://mooncake.pgsty.com/blog/) | [PGEXT](https://pgext.cloud/ext/pg_mooncake) | [Releases](https://github.com/pgsty/pg_mooncake/releases) | [Issues][issues-link] | [Upstream](https://github.com/Mooncake-Labs/pg_mooncake)
+
+---
+
+## Mooncake Suite
+
+`pg_mooncake` is the core PostgreSQL extension of the **Mooncake** family maintained by [PGSTY](https://pgsty.com):
+
+- **[`pg_mooncake`](https://github.com/pgsty/pg_mooncake)** ([Docs](https://mooncake.pgsty.com/docs/intro/) / [Meta](https://pgext.cloud/ext/pg_mooncake)): PostgreSQL extension (`v0.3.0`, MIT) providing `mooncake.create_table()`, logical replication workers, and transparent query routing via `pg_duckdb` `1.2.0`.
+- **[`moonlink`][moonlink-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/moonlink/)): Rust real-time Iceberg v3 ingestion engine (`v0.0.1`, BSL-1.1 with `pg_mooncake` Linking & Distribution Exception; client crates MIT).
+- **[`duckdb_mooncake`][duckdb-mooncake-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)): DuckDB `v2.0.0` storage & catalog scanner extension (`v0.0.2`, MIT) merging in-memory Arrow IPC buffers, Roaring deletion vectors, and flushed Parquet files with LSN snapshot consistency.
+
+---
 
 ## Overview
 
@@ -18,10 +34,29 @@
 
 ## Installation
 
-### Option 1: Docker
+For full installation instructions, see the [Installation Guide](https://mooncake.pgsty.com/docs/getting-started/).
+
+### Option 1: Install via Native Linux Packages ([`pig`](https://pig.pgsty.com/))
+
+On EL 8/9/10, Debian 12/13, and Ubuntu 22.04/24.04 (PostgreSQL 14–18), you can install pre-built native packages from the [Pigsty repository](https://pigsty.io/ext/e/pg_mooncake) (see package matrix on [pgext.cloud](https://pgext.cloud/ext/pg_mooncake)):
+
+```bash
+curl -fsSL https://repo.pigsty.io/pig | bash
+pig repo add pgsql -u
+pig ext add pg_mooncake pg_duckdb
+```
+
+Then configure `shared_preload_libraries` and `wal_level = logical` in `postgresql.conf` and restart PostgreSQL:
+
+```ini
+shared_preload_libraries = 'pg_duckdb,pg_mooncake'
+wal_level = logical
+```
+
+### Option 2: Docker
 
 The upstream image below is a legacy distribution. It does not contain this
-fork's DuckDB 2.0 compatibility changes; use the source build for those changes.
+fork's DuckDB 2.0 compatibility changes; use the native package or source build for those changes.
 ```bash
 docker run --name mooncake --rm -e POSTGRES_PASSWORD=password mooncakelabs/pg_mooncake
 ```
@@ -31,7 +66,7 @@ This will start Postgres with pg_mooncake preinstalled. You can then connect to 
 docker exec -it mooncake psql -U postgres
 ```
 
-### Option 2: From Source
+### Option 3: From Source
 
 This fork's **pg_mooncake 0.3.0** requires **pg_duckdb 1.2.0 and DuckDB 2.0.0**.
 pg_mooncake has its own release version. `versions.json` records the dependency
@@ -211,26 +246,52 @@ Finally, query `trades_iceberg` to see that it reflects the up-to-date state of 
 SELECT avg(price) FROM trades_iceberg WHERE symbol = 'AMZN';
 ```
 
-## Contributing
+---
 
-pg_mooncake is an open-source project maintained by [Mooncake Labs][mooncake-link] and licensed under the [MIT License][license-link]. We'd love your help to make it even better! Join [our Slack][slack-link], participate in [discussions][discussions-link], open [issues][issues-link] to report bugs or suggest features, contribute code and documentation, or help us improve the project in any way. All contributions are welcome! 🥮
+## Documentation
 
-[clickbench-link]: https://www.mooncake.dev/blog/clickbench-v0.1
-[discussions-link]: https://github.com/Mooncake-Labs/pg_mooncake/discussions
-[dockerfile-link]: https://github.com/Mooncake-Labs/pg_mooncake/blob/main/Dockerfile
-[docs-link]: https://docs.mooncake.dev/
-[docs-shield]: https://img.shields.io/badge/docs-mooncake?logo=readthedocs&logoColor=white
+Full documentation is available at **[mooncake.pgsty.com/docs](https://mooncake.pgsty.com/docs/)**:
+
+- **Getting Started**
+  - [Installation & Quick Start](https://mooncake.pgsty.com/docs/getting-started/)
+  - [Hello World Tutorial](https://mooncake.pgsty.com/docs/getting-started/hello-world/)
+  - [Known Limitations](https://mooncake.pgsty.com/docs/getting-started/known-limitations/)
+- **Architecture & Core Components**
+  - [Welcome to Mooncake](https://mooncake.pgsty.com/docs/intro/)
+  - [Architecture Overview](https://mooncake.pgsty.com/docs/intro/architecture/)
+  - [Moonlink Engine (`v0.0.1`)](https://mooncake.pgsty.com/docs/intro/moonlink/)
+  - [duckdb_mooncake Scanner (`v0.0.2`)](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)
+  - [v0.1 vs v0.2 / v0.3](https://mooncake.pgsty.com/docs/intro/0.1-vs-0.2/)
+- **SQL & Configuration Reference**
+  - [Reference Overview](https://mooncake.pgsty.com/docs/reference/)
+  - [Create Columnstore Tables](https://mooncake.pgsty.com/docs/reference/create-columnstore/)
+  - [Query Columnstore Tables](https://mooncake.pgsty.com/docs/reference/query-columnstore/)
+  - [Iceberg & Object Storage](https://mooncake.pgsty.com/docs/reference/iceberg/)
+  - [Query Existing Data Lakes](https://mooncake.pgsty.com/docs/reference/query-data-lake/)
+- **Use Cases & Engineering Blog**
+  - [Real-Time Analytics](https://mooncake.pgsty.com/docs/use-cases/real-time-analytics/) · [Postgres to Iceberg Lakehouse](https://mooncake.pgsty.com/docs/use-cases/lakehouse/) · [Table Archiving](https://mooncake.pgsty.com/docs/use-cases/archiving/) · [Logging & Time-Series](https://mooncake.pgsty.com/docs/use-cases/logging/)
+  - [pg_mooncake v0.3.0 Release Notes](https://mooncake.pgsty.com/blog/release/pg-mooncake-0.3.0/) · [Adapting pg_mooncake to DuckDB 2.0 & PostgreSQL 18](https://mooncake.pgsty.com/blog/post/duckdb-2-adaptation/)
+  - [About, Licensing & Attribution](https://mooncake.pgsty.com/docs/about/)
+
+---
+
+## License
+
+This software is licensed under the **MIT License ([MIT][license-link])**.
+
+- Copyright (c) 2024–2025 Mooncake Labs, Inc.
+- Copyright (c) 2026 PGSTY PTE. LTD.
+- Maintained by [Ruohang Feng](mailto:rh@vonng.com) @ [PGSTY](https://pgsty.com)
+
+[clickbench-link]: https://mooncake.pgsty.com/blog/post/clickbench-v0.1/
+[dockerfile-link]: https://github.com/pgsty/pg_mooncake/blob/main/Dockerfile
+[docs-link]: https://mooncake.pgsty.com/docs/
 [duckdb-install]: https://duckdb.org/docs/stable/dev/building/overview.html#prerequisites
+[duckdb-mooncake-link]: https://github.com/pgsty/duckdb_mooncake
 [iceberg-link]: https://iceberg.apache.org/
-[issues-link]: https://github.com/Mooncake-Labs/pg_mooncake/issues
-[license-link]: https://github.com/Mooncake-Labs/pg_mooncake/blob/main/LICENSE
-[license-shield]: https://img.shields.io/badge/License-MIT-blue
-[mooncake-link]: https://mooncake.dev/
-[moonlink-link]: https://github.com/Mooncake-Labs/moonlink
+[issues-link]: https://github.com/pgsty/pg_mooncake/issues
+[license-link]: https://github.com/pgsty/pg_mooncake/blob/main/LICENSE
+[moonlink-link]: https://github.com/pgsty/moonlink
 [pgduckdb-link]: https://github.com/duckdb/pg_duckdb
 [pgrx-install]: https://github.com/pgcentralfoundation/pgrx?tab=readme-ov-file#getting-started
 [rust-install]: https://www.rust-lang.org/tools/install
-[slack-link]: https://join.slack.com/t/mooncake-devs/shared_invite/zt-2sepjh5hv-rb9jUtfYZ9bvbxTCUrsEEA
-[slack-shield]: https://img.shields.io/badge/Mooncake%20Devs-purple?logo=slack
-[x-link]: https://x.com/mooncakelabs
-[x-shield]: https://img.shields.io/twitter/url?label=%40mooncakelabs&url=https%3A%2F%2Fx.com%2Fmooncakelabs
