@@ -1,8 +1,10 @@
 PG_VERSION ?= pg18
 PG_CONFIG ?= $(shell cargo pgrx info pg-config $(PG_VERSION))
 export PG_CONFIG
+PGRX_PG_CONFIG_PATH ?= $(PG_CONFIG)
+export PGRX_PG_CONFIG_PATH
 JOBS ?= 4
-DUCKDB_VERSION := v2.0.0
+DUCKDB_VERSION := v2.0.1
 MOONCAKE_BUILD := duckdb_mooncake/build/release
 MOONCAKE_REPOSITORY ?= $(shell $(PG_CONFIG) --sharedir)/extension/pg_mooncake
 PACKAGE_DIR ?= $(CURDIR)/target/release/pg_mooncake-$(PG_VERSION)
@@ -27,7 +29,7 @@ help:
 	@echo "  clean         Remove build artifacts"
 	@echo ""
 	@echo "Options:"
-	@echo "  PG_VERSION    pg14, pg15, pg16, pg17, or pg18 (default)"
+	@echo "  PG_VERSION    pg15, pg16, pg17, pg18 (default), or pg19"
 
 clean:
 	@cargo clean
@@ -64,10 +66,12 @@ pg_duckdb: check-versions
 	@$(MAKE) -C pg_duckdb install -j$(JOBS)
 
 run: pg_duckdb
-	@cargo pgrx run
+	@cargo pgrx run $(PG_VERSION) --no-default-features --features $(PG_VERSION),bgworker --cargo=--locked
+
+REGRESS_TESTS ?= setup sanity partitioned_table partitioned_existing drop writes identifiers renames freshness data_directory
 
 test:
 	mkdir -p target/regress
 	$(shell $(PG_CONFIG) --pkglibdir)/pgxs/src/test/regress/pg_regress \
 		--inputdir=tests/pg_regress --outputdir=target/regress \
-		--load-extension=pg_duckdb --dbname=$(REGRESS_DB) setup sanity partitioned_table
+		--load-extension=pg_duckdb --dbname=$(REGRESS_DB) $(REGRESS_TESTS)

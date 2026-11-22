@@ -14,8 +14,9 @@ RUN apt update \
 
 USER vscode
 
-RUN cargo install --locked cargo-pgrx@0.16.1 \
- && cargo pgrx init
+RUN rustup toolchain install 1.99.1 --component clippy --component rustfmt \
+ && cargo +1.99.1 install --locked cargo-pgrx@0.20.0 \
+ && cargo +1.99.1 pgrx init
 
 RUN cd ~ \
  && git clone https://github.com/microsoft/vcpkg.git \

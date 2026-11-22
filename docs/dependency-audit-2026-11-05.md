@@ -95,3 +95,51 @@ before/after reports, old lockfiles and targeted update logs are retained in the
 test container's `/work/logs` and the ignored local directory
 `target/validation/el10a-pg17/`. Re-running against a newer advisory database may
 produce different results; retain the database revision with each audit.
+
+## Follow-up: pgrx 0.20.0, 2026-11-20
+
+The pgrx upgrade used a targeted `cargo update -p pgrx --precise 0.20.0`.
+The Moonlink workspace and FFI lockfiles retain their previous contents.
+Both the previous top-level lockfile and the updated one were audited with
+cargo-audit 0.22.2 against RustSec revision
+`074ea9a7ed619f511b5b7374c7a97e98d1e98be4` (November 19, 2026), using
+`--no-fetch --no-yanked --json` and no advisory ignores.
+
+| Lockfile | Vulnerability matches | Unsoundness warnings |
+| --- | ---: | ---: |
+| Top-level before the pgrx upgrade | 18 | 2 |
+| Top-level after the pgrx upgrade | 18 | 1 |
+| Moonlink workspace | 27 | 2 |
+| DuckDB extension's RPC client | 0 | 0 |
+
+The top-level vulnerability matches are identical before and after the upgrade.
+Compared with the November 5 database, the newer snapshot also reports findings
+in libsqlite3-sys 0.30.1, openssl 0.10.73, quinn-proto 0.11.18 and quinn-udp
+0.5.14. These findings remain unresolved. The required rustix update from
+1.0.8 to 1.1.6 removes RUSTSEC-2026-0486; arrow-data 55.2.0 still has the
+RUSTSEC-2026-0442 unsoundness warning. Unmaintained-crate warnings also remain.
+
+Raw JSON reports, the prior top-level lockfile and a summary recording the
+database revision are retained under the ignored local directory
+`target/validation/pgrx-0.20-pg19/`. These scans did not check yanked releases.
+
+## Follow-up: v0.3.1 / moonlink v0.3.0, 2026-11-22
+
+Upgrading `moonlink` to `v0.3.0` (`dcf999a9`, Arrow/Parquet 56, removing
+Delta Lake, DataFusion, Kafka, OpenTelemetry, REST/Glue catalogs and GCS) and
+applying targeted lockfile updates (`openssl 0.10.82`, `openssl-sys 0.9.118`,
+`rustix 1.1.6`, `spin 0.9.9`) was audited with `cargo-deny check advisories`:
+
+| Lockfile | Vulnerability advisories | Unsoundness advisories |
+| --- | ---: | ---: |
+| Top-level `Cargo.lock` (`v0.3.1`) | 4 | 1 |
+| `moonlink/Cargo.lock` (`v0.3.0`) | 0 | 4 |
+| `duckdb_mooncake/moonlink_ffi/Cargo.lock` (`v0.0.3`) | 0 | 0 |
+
+Remaining top-level vulnerabilities are all transitive dependencies constrained by
+upstream crate major versions: `libsqlite3-sys` (`RUSTSEC-2026-0459`, via
+`sqlx-sqlite 0.8.6`), `quick-xml 0.37.5` (`RUSTSEC-2026-0194`, `RUSTSEC-2026-0195`,
+via `opendal 0.54.0`), and `thrift 0.17.0` (`RUSTSEC-2026-0435`, via
+`parquet 56.2.1` / `iceberg 0.7.0`). `arrow-data 56.2.1` retains the
+`RUSTSEC-2026-0442` unsoundness notice; unmaintained-crate notices (`bincode`,
+`chrono`, `core2`, `paste`, `pin-utils`, `serde_cbor`) remain.

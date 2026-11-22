@@ -1,0 +1,4 @@
+**/.git
+target
+duckdb_mooncake/build
+pg_duckdb/third_party/duckdb/build

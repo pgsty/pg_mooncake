@@ -1,7 +1,8 @@
 [package]
 name = "pg_mooncake"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
+rust-version = "1.99.1"
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -9,21 +10,20 @@ crate-type = ["cdylib", "lib"]
 [features]
 default = ["bgworker", "pg18"]
 bgworker = ["moonlink_service"]
-pg14 = ["pgrx/pg14"]
 pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
 pg18 = ["pgrx/pg18"]
+pg19 = ["pgrx/pg19"]
 
 [dependencies]
-bincode = "2"
+libc = "0.2"
 moonlink_rpc.path = "moonlink/src/moonlink_rpc"
 moonlink_service = { path = "moonlink/src/moonlink_service", optional = true }
 native-tls = "0.2"
-pgrx = "=0.19.3"
+pgrx = "=0.20.0"
 postgres = { git = "https://github.com/Mooncake-Labs/rust-postgres.git", rev = "14c8e599f5551a8caa96ff5023685a6f537a1455" }
 postgres-native-tls = { git = "https://github.com/Mooncake-Labs/rust-postgres.git", rev = "14c8e599f5551a8caa96ff5023685a6f537a1455" }
-regex = "1"
 tokio = "1.48"
 
 [profile.release]

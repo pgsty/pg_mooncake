@@ -37,12 +37,17 @@ def main():
     require(capture("src/sql/bootstrap.sql", r"RAISE EXCEPTION 'pg_mooncake ([^']+); installed version"), f"{release} requires pg_duckdb {pg_duckdb_version}", "SQL version message")
     require(capture("Makefile", r'^DUCKDB_VERSION := (.+)$'), versions["duckdb"]["version"], "DuckDB build version")
     require(capture("duckdb_mooncake/extension_config.cmake", r'EXTENSION_VERSION (\S+)'), versions["duckdb_mooncake"]["version"], "DuckDB Mooncake version")
-    require(capture("moonlink/Cargo.toml", r'^version = "([^"]+)"'), versions["moonlink"]["version"], "Moonlink version")
+    moonlink_cargo_version = versions["moonlink"].get("cargo_version", versions["moonlink"]["version"])
+    require(capture("moonlink/Cargo.toml", r'^version = "([^"]+)"'), moonlink_cargo_version, "Moonlink Cargo workspace version")
     require(capture("duckdb_mooncake/moonlink_ffi/Cargo.toml", r'moonlink_rpc = .*rev = "([^"]+)"'), versions["moonlink"]["revision"], "RPC client/server revision")
+    rust_pg_top = set(re.findall(r'rust-postgres\.git",\s*rev = "([0-9a-f]+)"', (ROOT / "Cargo.toml").read_text(), re.IGNORECASE))
+    rust_pg_ml = set(re.findall(r'rust-postgres\.git",\s*rev = "([0-9a-f]+)"', (ROOT / "moonlink/Cargo.toml").read_text(), re.IGNORECASE))
+    if len(rust_pg_top) != 1 or rust_pg_top != rust_pg_ml:
+        raise ValueError(f"rust-postgres revision mismatch: Cargo.toml={sorted(rust_pg_top)}, moonlink/Cargo.toml={sorted(rust_pg_ml)}")
     for component in ("duckdb_mooncake", "moonlink"):
         require(versions[component]["tag"], "v" + versions[component]["version"].removeprefix("v"), f"{component} release tag")
 
-    for component in ("pg_mooncake", "pgrx", "pgrx-bindgen", "pgrx-macros", "pgrx-pg-config", "pgrx-pg-sys", "pgrx-sql-entity-graph"):
+    for component in ("pg_mooncake", "pgrx", "pgrx-bindgen", "pgrx-c-macros", "pgrx-macros", "pgrx-pg-config", "pgrx-pg-sys", "pgrx-sql-entity-graph"):
         expected = release if component == "pg_mooncake" else versions["pgrx"]
         require(capture("Cargo.lock", rf'^name = "{component}"\nversion = "([^"]+)"'), expected, f"Cargo.lock {component}")
 

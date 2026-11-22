@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end tests against a disposable PG17/18 database (requires psycopg 3).
+"""End-to-end tests against a disposable PG17/18/19 database (requires psycopg 3).
 
 Run normally, restart PostgreSQL, then run with --after-restart. Connection
 parameters come from libpq's PGHOST/PGPORT/PGUSER/PGDATABASE environment variables.
@@ -15,7 +15,7 @@ import psycopg
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--after-restart", action="store_true")
-    parser.add_argument("--pg-major", type=int, choices=(17, 18), default=18)
+    parser.add_argument("--pg-major", type=int, choices=(17, 18, 19), default=18)
     args = parser.parse_args()
     with psycopg.connect(autocommit=True, prepare_threshold=None) as conn:
         conn.execute("SET statement_timeout = '120s'")
@@ -32,15 +32,15 @@ def main():
             print(f"PASS: {label}", flush=True)
 
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
-        assert versions == [("1.2.0",)], versions
+        assert versions == [("1.2.1",)], versions
         assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
-        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.0",)]
-        assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.0",)]
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.1",)]
+        assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.1",)]
         assert rows("""
             SELECT * FROM duckdb.query($$
                 SELECT loaded, extension_version FROM duckdb_extensions() WHERE extension_name = 'mooncake'
             $$)
-        """) == [(True, "v0.0.2")]
+        """) == [(True, "v0.0.3")]
 
         if args.after_restart:
             compare()
@@ -176,22 +176,11 @@ def main():
         conn.execute("DROP TABLE mooncake_it.partition_mirror, mooncake_it.partition_source")
         checkpoint("partition-root INSERT/UPDATE/DELETE, filtered counts, and snapshot after unrelated WAL")
 
-        conn.execute("CREATE TABLE mooncake_it.file_source (id bigint PRIMARY KEY, label text)")
-        conn.execute("CALL mooncake.create_table('mooncake_it.file_mirror', 'mooncake_it.file_source')")
-        parquet = os.path.join(rows("SHOW data_directory")[0][0], "mooncake_it_import.parquet")
-        conn.execute("SELECT duckdb.raw_query(%s)", (
-            "COPY (SELECT 42000::BIGINT AS id, 'file import' AS label) TO '"
-            + parquet.replace("'", "''") + "' (FORMAT PARQUET)",
-        ))
-        try:
-            conn.execute("CALL mooncake.load_files('mooncake_it.file_mirror', %s::text[])", ([parquet],))
-        except psycopg.errors.FeatureNotSupported as exc:
-            assert "not implemented" in str(exc), exc
-        else:
-            raise AssertionError("unimplemented file import must not silently succeed")
-        assert rows("SELECT count(*) FROM mooncake_it.file_mirror") == [(0,)]
-        conn.execute("DROP TABLE mooncake_it.file_mirror, mooncake_it.file_source")
-        checkpoint("unimplemented file import reports an explicit error without modifying the table")
+        assert not rows(
+            "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'mooncake' AND p.proname = 'load_files'"
+        )
+        checkpoint("unimplemented mooncake.load_files procedure is removed")
         print("Restart PostgreSQL, then run this script with --after-restart.", flush=True)
 
 

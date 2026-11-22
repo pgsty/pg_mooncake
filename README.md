@@ -3,10 +3,10 @@
 [![Website: mooncake.pgsty.com](https://img.shields.io/badge/Website-mooncake.pgsty.com-slategray?style=flat&logo=cilium&logoColor=white)](https://mooncake.pgsty.com/)
 [![Docs: pg_mooncake](https://img.shields.io/badge/Docs-pg__mooncake-slategray?style=flat)](https://mooncake.pgsty.com/docs/)
 [![Catalog: pg_mooncake](https://img.shields.io/badge/Catalog-pg__mooncake-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
-[![Version: v0.3.0](https://img.shields.io/badge/Version-v0.3.0-slategray?style=flat)](https://github.com/pgsty/pg_mooncake/releases)
+[![Version: v0.3.1](https://img.shields.io/badge/Version-v0.3.1-slategray?style=flat)](https://github.com/pgsty/pg_mooncake/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-slategray?style=flat&logo=opensourceinitiative&logoColor=green)](https://github.com/pgsty/pg_mooncake/blob/main/LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/pgsty/pg_mooncake?style=flat&logo=github&logoColor=black&color=slategray)](https://star-history.com/#pgsty/pg_mooncake&Date)
-[![PostgreSQL: 14-18](https://img.shields.io/badge/PostgreSQL-14--18-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
+[![PostgreSQL: 15-19](https://img.shields.io/badge/PostgreSQL-15--19-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
 
 **`pg_mooncake`** is a PostgreSQL extension that creates a real-time columnstore mirror of your PostgreSQL tables in [Apache Iceberg][iceberg-link], enabling sub-second vectorized analytical queries powered by [`moonlink`][moonlink-link], [`duckdb_mooncake`][duckdb-mooncake-link], and [`pg_duckdb`][pgduckdb-link].
 
@@ -18,9 +18,9 @@
 
 `pg_mooncake` is the core PostgreSQL extension of the **Mooncake** family maintained by [PGSTY](https://pgsty.com):
 
-- **[`pg_mooncake`](https://github.com/pgsty/pg_mooncake)** ([Docs](https://mooncake.pgsty.com/docs/intro/) / [Meta](https://pgext.cloud/ext/pg_mooncake)): PostgreSQL extension (`v0.3.0`, MIT) providing `mooncake.create_table()`, logical replication workers, and transparent query routing via `pg_duckdb` `1.2.0`.
-- **[`moonlink`][moonlink-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/moonlink/)): Rust real-time Iceberg v3 ingestion engine (`v0.0.1`, BSL-1.1 with `pg_mooncake` Linking & Distribution Exception; client crates MIT).
-- **[`duckdb_mooncake`][duckdb-mooncake-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)): DuckDB `v2.0.0` storage & catalog scanner extension (`v0.0.2`, MIT) merging in-memory Arrow IPC buffers, Roaring deletion vectors, and flushed Parquet files with LSN snapshot consistency.
+- **[`pg_mooncake`](https://github.com/pgsty/pg_mooncake)** ([Docs](https://mooncake.pgsty.com/docs/intro/) / [Meta](https://pgext.cloud/ext/pg_mooncake)): PostgreSQL 15–19 extension (`v0.3.1`, MIT) providing `mooncake.create_table()`, logical replication workers, and transparent query routing via `pg_duckdb` `1.2.1`.
+- **[`moonlink`][moonlink-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/moonlink/)): Rust real-time Iceberg v3 ingestion engine (`v0.3.0`, BSL-1.1 with `pg_mooncake` Linking & Distribution Exception; client crates MIT).
+- **[`duckdb_mooncake`][duckdb-mooncake-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)): DuckDB `v2.0.1` storage & catalog scanner extension (`v0.0.3`, MIT) merging in-memory Arrow IPC buffers, Roaring deletion vectors, and flushed Parquet files with LSN snapshot consistency.
 
 ---
 
@@ -68,17 +68,19 @@ docker exec -it mooncake psql -U postgres
 
 ### Option 3: From Source
 
-This fork's **pg_mooncake 0.3.0** requires **pg_duckdb 1.2.0 and DuckDB 2.0.0**.
+This fork's **pg_mooncake 0.3.1** requires **pg_duckdb 1.2.1 and DuckDB 2.0.1**.
 pg_mooncake has its own release version. `versions.json` records the dependency
 tags, exact submodule commits, both DuckDB source revisions, and
-pgrx/cargo-pgrx **0.19.3**. Builds check
-these pins and use Cargo lockfiles; extension creation rejects a different
-installed pg_duckdb version.
+pgrx/cargo-pgrx **0.20.0**. Source builds require **Rust 1.99.1** or newer
+and support **PostgreSQL 15–19**, with PostgreSQL 18 as the default target.
+pgrx 0.20 no longer supports PostgreSQL 14; use the 0.3.0 release for PG14.
+Builds check these pins and use Cargo lockfiles; extension creation rejects a
+different installed pg_duckdb version.
 The DuckDB Mooncake extension must be rebuilt along with this upgrade: a binary
-compiled for DuckDB 1.4.x cannot be loaded by DuckDB 2.0.
+compiled for DuckDB 1.4.x or 2.0.0 cannot be loaded by DuckDB 2.0.1.
 
-The dependencies are [duckdb_mooncake v0.0.2](https://github.com/pgsty/duckdb_mooncake/tree/v0.0.2)
-and [Moonlink v0.0.1](https://github.com/pgsty/moonlink/tree/v0.0.1). Their Git
+The dependencies are [duckdb_mooncake v0.0.3](https://github.com/pgsty/duckdb_mooncake/tree/v0.0.3)
+and [Moonlink v0.3.0](https://github.com/pgsty/moonlink/tree/v0.3.0). Their Git
 submodules remain pinned to the full commits recorded in `versions.json`; the
 FFI client's Moonlink revision matches the server. For an existing checkout,
 fetch these tags before running the version check:
@@ -86,8 +88,8 @@ fetch these tags before running the version check:
 ```bash
 git submodule sync --recursive
 git submodule update --init --recursive
-git -C duckdb_mooncake fetch origin tag v0.0.2
-git -C moonlink fetch origin tag v0.0.1
+git -C duckdb_mooncake fetch origin tag v0.0.3
+git -C moonlink fetch origin tag v0.3.0
 ```
 
 To build pg_mooncake, first install [Rust][rust-install], [pgrx][pgrx-install], and [the build tools for DuckDB][duckdb-install].
@@ -96,7 +98,7 @@ On Ubuntu 24.04, the additional native dependencies are:
 ```bash
 sudo apt-get install build-essential cmake ninja-build pkg-config libclang-dev \
     libssl-dev libcurl4-openssl-dev liblz4-dev protobuf-compiler postgresql-server-dev-18
-cargo install --locked cargo-pgrx --version 0.19.3
+cargo install --locked cargo-pgrx --version 0.20.0
 ```
 
 For EL10 / PostgreSQL 17, the equivalent native dependencies are:
@@ -121,8 +123,22 @@ make pg_duckdb PG_VERSION=pg17 PG_CONFIG=/usr/pgsql-17/bin/pg_config JOBS=4
 make install PG_VERSION=pg17 PG_CONFIG=/usr/pgsql-17/bin/pg_config JOBS=4
 ```
 
-Skip `make pg_duckdb` only when the matching 1.2.0 binary is already installed.
+Skip `make pg_duckdb` only when the matching 1.2.1 binary is already installed.
 For Ubuntu / PostgreSQL 18, use `pg18` and `/usr/lib/postgresql/18/bin/pg_config`.
+
+For PostgreSQL 19, install its server development headers and select `pg19`:
+
+```bash
+cargo pgrx init --pg19=/usr/lib/postgresql/19/bin/pg_config
+make check-versions
+make pg_duckdb PG_VERSION=pg19 PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config JOBS=4
+make install PG_VERSION=pg19 PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config JOBS=4
+```
+
+`make package PG_VERSION=pg19 PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config`
+stages the installation under `target/release/pg_mooncake-pg19/`.
+The build target does not imply availability of pre-built PG19 packages;
+check the package matrix linked above.
 
 The install step also builds `mooncake.duckdb_extension` and installs a local
 DuckDB extension repository under `$(pg_config --sharedir)/extension/pg_mooncake`.
@@ -140,6 +156,8 @@ Finally, configure PostgreSQL and restart it. On EL10 with PostgreSQL 17:
 duckdb.allow_community_extensions = true
 duckdb.allow_unsigned_extensions = true
 mooncake.extension_repository = '/usr/pgsql-17/share/extension/pg_mooncake'
+# Optional: place moonlink files and socket outside PGDATA so pg_basebackup works.
+# mooncake.data_directory = '/var/lib/pgsql/17/mooncake'
 shared_preload_libraries = 'pg_duckdb,pg_mooncake'
 wal_level = logical
 ```
@@ -148,9 +166,9 @@ The unsigned-extension setting is required for the locally built DuckDB extensio
 Set `mooncake.extension_repository` to the matching installation path if your
 PostgreSQL installation uses a different prefix. When this setting is absent,
 extension creation retains the upstream behavior of using the community repository.
-
-The existing [Dockerfile][dockerfile-link] describes the legacy upstream build
-and has not been validated for this fork.
+Set `mooncake.data_directory` to a server-owned directory outside `$PGDATA`
+(mode `0700` or `0750`) when using `pg_basebackup` or streaming standbys; see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for lifecycle details.
 
 ### Testing the source build
 
@@ -174,15 +192,22 @@ The integration test compares the mirror with PostgreSQL heap tables before and
 after changes, snapshots, compaction and restart. It also checks filtered scans,
 aggregates, joins, prepared statements, empty tables and cleanup.
 
-`mooncake.load_files` is unimplemented in the bundled Moonlink source. This fork
-returns `FEATURE_NOT_SUPPORTED` instead of silently acknowledging an import.
-Partitions added after mirror creation must also have `REPLICA IDENTITY FULL`
-set before they receive writes; automatic handling of later partition DDL is
-not covered by this validation.
-`TRUNCATE` replication is also outside the supported/tested scope. The validation
-targets are EL10 ARM64 with PostgreSQL 17 and the earlier Ubuntu 24.04 ARM64 /
-PostgreSQL 18 run; each report identifies the exact source and dependency versions
-tested. Other combinations require their own validation.
+The unimplemented `mooncake.load_files` procedure has been removed (matching
+upstream 0.3.0). Direct writes (`INSERT`, `UPDATE`, `DELETE`, `MERGE`,
+`TRUNCATE`, `COPY FROM`) and unsupported mirror DDL (`RENAME`, `SET SCHEMA`,
+`SET ACCESS METHOD`, `ATTACH PARTITION`, `INHERIT`) are rejected with explicit
+errors before reaching `pg_duckdb`. Partitions added while empty are followed;
+attaching populated partitions, detaching/dropping partitions, or running
+`TRUNCATE` / schema DDL on a source table transitions its mirror into an
+isolated errored state (drop and re-create with `mooncake.create_table`).
+
+On November 22, 2026, `pg_mooncake 0.3.1` (`pgrx 0.20.0`, `pg_duckdb 1.2.1`,
+`DuckDB v2.0.1`, `duckdb_mooncake v0.0.3`, `moonlink v0.3.0`) passed macOS ARM64
+builds, SQL generation and package staging across PostgreSQL 15.20, 18.6 and
+19.0 (identical SQL and control outputs), plus full PostgreSQL 19.0 release
+build/install/package validation: 10/10 `pg_regress` suites, 3/3 version-guard
+checks, 11 integration checkpoints, 2 fast-restart/cleanup checkpoints, and
+external `mooncake.data_directory` + `pg_basebackup -Ft` verification.
 
 See the [u24a / PostgreSQL 18 validation report](docs/duckdb-2-validation.md)
 for pinned revisions, test results, reproduction commands and remaining limits.
@@ -259,8 +284,8 @@ Full documentation is available at **[mooncake.pgsty.com/docs](https://mooncake.
 - **Architecture & Core Components**
   - [Welcome to Mooncake](https://mooncake.pgsty.com/docs/intro/)
   - [Architecture Overview](https://mooncake.pgsty.com/docs/intro/architecture/)
-  - [Moonlink Engine (`v0.0.1`)](https://mooncake.pgsty.com/docs/intro/moonlink/)
-  - [duckdb_mooncake Scanner (`v0.0.2`)](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)
+  - [Moonlink Engine (`v0.3.0`)](https://mooncake.pgsty.com/docs/intro/moonlink/)
+  - [duckdb_mooncake Scanner (`v0.0.3`)](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)
   - [v0.1 vs v0.2 / v0.3](https://mooncake.pgsty.com/docs/intro/0.1-vs-0.2/)
 - **SQL & Configuration Reference**
   - [Reference Overview](https://mooncake.pgsty.com/docs/reference/)
