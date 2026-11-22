@@ -39,14 +39,6 @@ pub(crate) enum RpcError {
     Server(moonlink_rpc::Error),
 }
 
-impl RpcError {
-    /// moonlink is not accepting connections or not answering, so later calls would fail the same way. A
-    /// transport error only breaks this connection (the next call reconnects).
-    pub(crate) fn is_unreachable(&self) -> bool {
-        matches!(self, RpcError::Connect(_) | RpcError::Timeout(_))
-    }
-}
-
 impl std::fmt::Display for RpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -1,10 +1,12 @@
 PG_VERSION ?= pg18
 PG_CONFIG ?= $(shell cargo pgrx info pg-config $(PG_VERSION))
-export PG_CONFIG
 PGRX_PG_CONFIG_PATH ?= $(PG_CONFIG)
-export PGRX_PG_CONFIG_PATH
+ifneq ($(filter format install package pg_duckdb run test,$(MAKECMDGOALS)),)
+export PG_CONFIG PGRX_PG_CONFIG_PATH
+endif
 JOBS ?= 4
 DUCKDB_VERSION := v2.0.1
+export DUCKDB_COMMIT = $(shell python3 -c 'import json; print(json.load(open("versions.json"))["duckdb"]["revision"])')
 MOONCAKE_BUILD := duckdb_mooncake/build/release
 MOONCAKE_REPOSITORY ?= $(shell $(PG_CONFIG) --sharedir)/extension/pg_mooncake
 PACKAGE_DIR ?= $(CURDIR)/target/release/pg_mooncake-$(PG_VERSION)
@@ -57,16 +59,25 @@ install: install-duckdb-mooncake
 	@cargo pgrx install --release $(PGRX_FLAGS)
 
 package: duckdb_mooncake
-	@cargo pgrx package $(PGRX_FLAGS) --out-dir "$(PACKAGE_DIR)"
-	install -d "$(PACKAGE_DIR)$(MOONCAKE_REPOSITORY)/$(DUCKDB_VERSION)/$$(cat $(MOONCAKE_BUILD)/duckdb_platform_out)"
-	install -m 644 $(MOONCAKE_BUILD)/extension/mooncake/mooncake.duckdb_extension \
-		"$(PACKAGE_DIR)$(MOONCAKE_REPOSITORY)/$(DUCKDB_VERSION)/$$(cat $(MOONCAKE_BUILD)/duckdb_platform_out)/"
+	@set -eu; mkdir -p "$(dir $(PACKAGE_DIR))"; \
+	stage=$$(mktemp -d "$(dir $(PACKAGE_DIR)).pg_mooncake.XXXXXX"); \
+	trap 'rm -rf "$$stage"' EXIT; \
+	cargo pgrx package $(PGRX_FLAGS) --out-dir "$$stage"; \
+	repository="$$stage$(MOONCAKE_REPOSITORY)/$(DUCKDB_VERSION)/$$(cat $(MOONCAKE_BUILD)/duckdb_platform_out)"; \
+	install -d "$$repository"; \
+	install -m 644 "$(MOONCAKE_BUILD)/extension/mooncake/mooncake.duckdb_extension" "$$repository/"; \
+	python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$$stage" "$(PACKAGE_DIR)"
 
 pg_duckdb: check-versions
 	@$(MAKE) -C pg_duckdb install -j$(JOBS)
 
-run: pg_duckdb
-	@cargo pgrx run $(PG_VERSION) --no-default-features --features $(PG_VERSION),bgworker --cargo=--locked
+run: pg_duckdb install-duckdb-mooncake
+	@cargo pgrx run $(PG_VERSION) --install-only --no-default-features --features $(PG_VERSION),bgworker --cargo=--locked
+	@cargo pgrx start $(PG_VERSION) \
+		--postgresql-conf "shared_preload_libraries=pg_duckdb,pg_mooncake" \
+		--postgresql-conf "wal_level=logical" --postgresql-conf "duckdb.allow_community_extensions=true" \
+		--postgresql-conf "duckdb.allow_unsigned_extensions=true" --postgresql-conf "mooncake.extension_repository=$(MOONCAKE_REPOSITORY)"
+	@cargo pgrx connect $(PG_VERSION)
 
 REGRESS_TESTS ?= setup sanity partitioned_table partitioned_existing drop writes identifiers renames freshness data_directory
 

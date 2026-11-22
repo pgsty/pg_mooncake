@@ -1,3 +1,12 @@
+## 0.3.2 candidate
+
+- Match the PG18 runtime package to the build headers. New mirror bindings require the generation returned by the create operation. Only the upgrade script imports historical registrations.
+- Add direct updates from 0.3.0 and 0.3.1. Check the loaded scanner, bind existing mirrors and remove the old `load_files` entry point. The upgrade procedure includes a snapshot and comparison on the old worker before retaining its `_wal` offline.
+- Bind each PG mirror to a Moonlink generation. Committed drops and interrupted creates can be reconciled after restart. A stale cleanup request cannot remove a replacement generation.
+- Use scanner v0.0.4 with independent scan connections. Reads and snapshots that require freshness use the source server's WAL position.
+- Close Moonlink's source connections when PostgreSQL enters smart shutdown so locally mirrored tables do not keep the postmaster waiting.
+- Upgrade the storage stack to Iceberg 0.11, Arrow/Parquet 58.4.2 and SQLx 0.9.1. The November 23 audit found zero vulnerability and unsoundness matches in all three lockfiles and default graphs. Strict default-graph checks report five, three and two unmaintained dependencies for pg_mooncake, Moonlink and FFI respectively. See [the dependency audit](docs/dependency-audit-2026-11-05.md).
+
 ## 0.3.1 (2026-11-22)
 ### Changed
 - Upgrade `pg_duckdb` to `1.2.1` / DuckDB `v2.0.1`, `duckdb_mooncake` to `v0.0.3`, and `moonlink` to `v0.3.0` (syncing upstream `Mooncake-Labs/moonlink` `v0.3-dev` @ `dcf999a9`, removing unused Delta/DataFusion/Kafka/OTEL/REST/GCS/WAL dependencies and upgrading Arrow/Parquet to `56`).
@@ -11,14 +20,12 @@
 - Absorb upstream `pg_mooncake` 0.3 hardening (PR #207):
   - `mooncake.data_directory` postmaster GUC with directory validation and `moonlink.lock` exclusive locking (enabling `pg_basebackup` and standbys, portable on Linux and macOS).
   - `src/mirror_writes.rs`: `planner_hook` and `ProcessUtility_hook` guards rejecting `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `COPY FROM`, `RENAME`, `SET SCHEMA`, `SET ACCESS METHOD`, `ATTACH PARTITION`, and `INHERIT` on mirror tables.
-  - `src/drop_tracking.rs`: `object_access_hook` + transaction pre-commit drop tracking with `ROLLBACK TO SAVEPOINT` safety, `PREPARE TRANSACTION` rejection, 30s timeout warning fallback, and zero Moonlink contact when dropping regular tables.
-  - Automatic RPC stream reconnection after Moonlink restarts, OID-checked rollback on failed `create_table`, password-redacted libpq connection errors, and `shared_preload_libraries` enforcement.
+  - Mirror drops use a pre-commit callback and an `sql_drop` event trigger.
   - Expanded 10-suite `pg_regress` regression harness (`setup`, `sanity`, `partitioned_table`, `partitioned_existing`, `drop`, `writes`, `identifiers`, `renames`, `freshness`, `data_directory`) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Export `PGRX_PG_CONFIG_PATH` from `PG_CONFIG` across `Makefile` targets (`install`, `package`, `run`) and check `rust-postgres` revision parity in `scripts/check_versions.py`.
 ### Validation
 - macOS ARM64: PG15.20, PG18.6 and PG19.0 builds with `bgworker`, SQL generation and pgrx package staging passed (identical SQL and control outputs across targets).
-- PostgreSQL 19.0 release build/package/install with `pg_duckdb 1.2.1` / DuckDB `v2.0.1` / `duckdb_mooncake v0.0.3` / `moonlink v0.3.0`: 10/10 `pg_regress` suites, 3/3 version-guard checks, 11 integration checkpoints, 2 fast-restart/cleanup checkpoints, and external `mooncake.data_directory` + `pg_basebackup -Ft` passed with zero leftover slots or server panics.
-- Security audit: `moonlink` workspace drops from 27 to 0 vulnerability advisories; top-level `Cargo.lock` drops from 18 to 4 residual upstream-pinned vulnerabilities (`libsqlite3-sys`, `quick-xml`, `thrift`) after patching `openssl` (`0.10.82`), `rustix` (`1.1.6`), and `spin` (`0.9.9`). See [the dependency audit](docs/dependency-audit-2026-11-05.md#follow-up-v031--moonlink-v030-2026-11-22).
+- The 0.3.1 integration script did not independently check that the postmaster had restarted between phases. Counts for the patched dependency graph are recorded under 0.3.2.
 
 ## 0.3.0 (2026-11-05)
 ### Changed

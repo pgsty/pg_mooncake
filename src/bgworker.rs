@@ -1,6 +1,7 @@
 use moonlink_service::{start_with_config, ServiceConfig};
 use pgrx::bgworkers::{
-    BackgroundWorker, BackgroundWorkerBuilder, BgWorkerStartTime, SignalWakeFlags,
+    BackgroundWorker, BackgroundWorkerBuilder, BackgroundWorkerStatus, BgWorkerStartTime,
+    DynamicBackgroundWorker, SignalWakeFlags,
 };
 use pgrx::prelude::*;
 use std::time::Duration;
@@ -74,9 +75,56 @@ fn wait_for_moonlink(moonlink: &std::thread::JoinHandle<moonlink_service::Result
     const RAISE_INTERVAL: Duration = Duration::from_secs(2);
     let mut last_raise: Option<std::time::Instant> = None;
     let mut sigterm = false;
+    let mut next_status_check = std::time::Instant::now() + RAISE_INTERVAL;
+    let mut next_sweep = std::time::Instant::now() + Duration::from_secs(5);
+    let mut pending = std::collections::VecDeque::new();
+    let mut worker: Option<DynamicBackgroundWorker> = None;
+    let mut handles = pgrx::PgMemoryContexts::new("moonlink cleanup worker handle");
     while !moonlink.is_finished() {
-        std::thread::sleep(POLL_INTERVAL);
+        unsafe {
+            pg_sys::WaitLatch(
+                pg_sys::MyLatch,
+                (pg_sys::WL_LATCH_SET | pg_sys::WL_TIMEOUT | pg_sys::WL_EXIT_ON_PM_DEATH) as _,
+                POLL_INTERVAL.as_millis() as _,
+                pg_sys::PG_WAIT_EXTENSION,
+            );
+            pg_sys::ResetLatch(pg_sys::MyLatch);
+        }
         sigterm |= BackgroundWorker::sigterm_received();
+        if !sigterm && std::time::Instant::now() >= next_status_check {
+            sigterm = postmaster_stopping();
+            next_status_check = std::time::Instant::now() + RAISE_INTERVAL;
+        }
+        if !sigterm {
+            if pending.is_empty() && std::time::Instant::now() >= next_sweep {
+                if let Ok(names) = crate::utils::rpc!(timeout = Duration::from_secs(1); moonlink_rpc::registered_databases)
+                {
+                    pending.extend(names.into_iter().filter(|name| {
+                        name.len() < pg_sys::NAMEDATALEN as usize && !name.contains('\0')
+                    }));
+                }
+                next_sweep = std::time::Instant::now() + Duration::from_secs(30);
+            }
+            if worker
+                .as_ref()
+                .is_none_or(|child| matches!(child.pid(), Err(BackgroundWorkerStatus::Stopped)))
+            {
+                if let Some(name) = pending.pop_front() {
+                    worker = unsafe {
+                        handles.reset();
+                        handles.switch_to(|_| {
+                            BackgroundWorkerBuilder::new("moonlink mirror cleanup")
+                                .set_library("pg_mooncake")
+                                .set_function("mooncake_cleanup_main")
+                                .enable_spi_access()
+                                .set_extra(&name)
+                                .load_dynamic()
+                                .ok()
+                        })
+                    };
+                }
+            }
+        }
         if sigterm
             && !moonlink.is_finished()
             && last_raise.is_none_or(|at| at.elapsed() >= RAISE_INTERVAL)
@@ -87,19 +135,48 @@ fn wait_for_moonlink(moonlink: &std::thread::JoinHandle<moonlink_service::Result
     }
 }
 
+#[pg_guard]
+#[no_mangle]
+extern "C-unwind" fn mooncake_cleanup_main(_arg: pg_sys::Datum) {
+    BackgroundWorker::connect_worker_to_spi(Some(BackgroundWorker::get_extra()), None);
+    BackgroundWorker::transaction(|| {
+        Spi::run("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED")
+            .expect("setting cleanup isolation");
+    });
+    BackgroundWorker::transaction(|| {
+        let extension = unsafe { pg_sys::get_extension_oid(c"pg_mooncake".as_ptr(), true) };
+        if extension == pg_sys::InvalidOid {
+            return;
+        }
+        unsafe {
+            pg_sys::LockDatabaseObject(
+                pg_sys::ExtensionRelationId,
+                extension,
+                0,
+                pg_sys::AccessShareLock as _,
+            )
+        };
+        let installed = Spi::get_one::<bool>("SELECT EXISTS (SELECT FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid WHERE d.classid='pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid=pg_catalog.to_regprocedure('mooncake._reconcile_creates()') AND d.refclassid='pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype='e' AND e.extname='pg_mooncake')").expect("checking mirror cleanup membership");
+        if installed == Some(true) {
+            crate::drop_tracking::reconcile();
+            Spi::run("SELECT mooncake._reconcile_creates()")
+                .expect("reconciling interrupted mirror creation");
+        }
+    });
+}
+
 /// Whether the postmaster is shutting down. It records "stopping" in postmaster.pid (the PM_STATUS line) for smart,
 /// fast and immediate shutdowns before it signals any child, so a worker that got SIGTERM because of a shutdown
 /// always sees it. Unreadable counts as not stopping: an extra restart is better than a worker that stays down.
 fn postmaster_stopping() -> bool {
     const LOCK_FILE_LINE_PM_STATUS: usize = 8;
-    let data_dir = unsafe { std::ffi::CStr::from_ptr(pg_sys::DataDir) }.to_string_lossy();
-    std::fs::read_to_string(std::path::Path::new(data_dir.as_ref()).join("postmaster.pid"))
+    std::fs::read("postmaster.pid")
         .ok()
         .and_then(|pid_file| {
             pid_file
-                .lines()
+                .split(|byte| *byte == b'\n')
                 .nth(LOCK_FILE_LINE_PM_STATUS - 1)
-                .map(|status| status.trim() == "stopping")
+                .map(|status| status.trim_ascii() == b"stopping")
         })
         .unwrap_or(false)
 }

@@ -102,6 +102,7 @@ unsafe extern "C-unwind" fn mooncake_process_utility(
 }
 
 unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
+    crate::duckdb_mooncake::prepare_attach();
     if stmt.is_null() {
         return;
     }
@@ -126,7 +127,9 @@ unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
             let stmt = &*stmt.cast::<pg_sys::RenameStmt>();
             match stmt.renameType {
                 // Postgres lets ALTER INDEX ... RENAME rename any relation, a table included.
-                pg_sys::ObjectType::OBJECT_TABLE | pg_sys::ObjectType::OBJECT_INDEX => {
+                pg_sys::ObjectType::OBJECT_TABLE
+                | pg_sys::ObjectType::OBJECT_INDEX
+                | pg_sys::ObjectType::OBJECT_COLUMN => {
                     if let Some(relid) = mirror_oid(stmt.relation) {
                         report_rename_mirror(format!(
                             "cannot rename mirror {}",
@@ -134,8 +137,19 @@ unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
                         ));
                     }
                 }
+                pg_sys::ObjectType::OBJECT_DATABASE if !stmt.subname.is_null() => {
+                    check_database(stmt.subname, "rename");
+                }
                 pg_sys::ObjectType::OBJECT_SCHEMA if !stmt.subname.is_null() => {
                     let namespace = pg_sys::get_namespace_oid(stmt.subname, true);
+                    if namespace != pg_sys::InvalidOid {
+                        pg_sys::LockDatabaseObject(
+                            pg_sys::NamespaceRelationId,
+                            namespace,
+                            0,
+                            pg_sys::AccessExclusiveLock as _,
+                        );
+                    }
                     if namespace != pg_sys::InvalidOid && schema_has_mirrors(namespace) {
                         let schema = CStr::from_ptr(stmt.subname).to_string_lossy();
                         report_rename_mirror(format!(
@@ -145,6 +159,9 @@ unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
                 }
                 _ => {}
             }
+        }
+        pg_sys::NodeTag::T_DropdbStmt => {
+            check_database((*stmt.cast::<pg_sys::DropdbStmt>()).dbname, "drop");
         }
         pg_sys::NodeTag::T_AlterObjectSchemaStmt => {
             let stmt = &*stmt.cast::<pg_sys::AlterObjectSchemaStmt>();
@@ -171,6 +188,17 @@ unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
                         (*(*cmd).def.cast::<pg_sys::PartitionCmd>()).name
                     }
                     pg_sys::AlterTableType::AT_AddInherit => stmt.relation,
+                    pg_sys::AlterTableType::AT_AddColumn
+                    | pg_sys::AlterTableType::AT_DropColumn
+                    | pg_sys::AlterTableType::AT_AlterColumnType
+                    | pg_sys::AlterTableType::AT_SetNotNull
+                    | pg_sys::AlterTableType::AT_DropNotNull
+                    | pg_sys::AlterTableType::AT_ColumnDefault => {
+                        if let Some(relid) = mirror_oid(stmt.relation) {
+                            report_write_to_mirror(relid);
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
                 if let Some(relid) = mirror_oid(child) {
@@ -182,15 +210,35 @@ unsafe fn check_utility_statement(stmt: *mut pg_sys::Node) {
     }
 }
 
-/// The relation a statement names, if it exists and is a mirror. Takes no lock: the statement itself locks it next,
-/// and a concurrent change can only turn the mirror into something the statement handles on its own.
+unsafe fn check_database(database: *const c_char, action: &str) {
+    let oid = pg_sys::get_database_oid(database, true);
+    if oid == pg_sys::InvalidOid {
+        return;
+    }
+    pg_sys::LockSharedObject(
+        pg_sys::DatabaseRelationId,
+        oid,
+        0,
+        pg_sys::AccessExclusiveLock as _,
+    );
+    let name = CStr::from_ptr(database).to_string_lossy();
+    let names = crate::utils::rpc!(timeout = std::time::Duration::from_secs(5); moonlink_rpc::registered_databases)
+        .unwrap_or_else(|err| error!("cannot check mirror registrations before database {action}: {err}"));
+    if names.iter().any(|database| database == name.as_ref()) {
+        report_rename_mirror(format!(
+            "cannot {action} database {name} because it contains mirrors"
+        ));
+    }
+}
+
+/// Keep the resolved relation stable until PostgreSQL takes the statement's own lock.
 unsafe fn mirror_oid(relation: *mut pg_sys::RangeVar) -> Option<pg_sys::Oid> {
     if relation.is_null() {
         return None;
     }
     let relid = pg_sys::RangeVarGetRelidExtended(
         relation,
-        pg_sys::NoLock as pg_sys::LOCKMODE,
+        pg_sys::AccessShareLock as pg_sys::LOCKMODE,
         pg_sys::RVROption::RVR_MISSING_OK as _,
         None,
         std::ptr::null_mut(),
@@ -199,18 +247,21 @@ unsafe fn mirror_oid(relation: *mut pg_sys::RangeVar) -> Option<pg_sys::Oid> {
 }
 
 unsafe fn schema_has_mirrors(namespace: pg_sys::Oid) -> bool {
-    Spi::get_one::<bool>(&format!(
-        "SELECT EXISTS (SELECT FROM pg_class c JOIN pg_am a ON a.oid = c.relam \
+    pg_sys::PushActiveSnapshot(pg_sys::GetLatestSnapshot());
+    let found = Spi::get_one::<bool>(&format!(
+        "SELECT EXISTS (SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_am a ON a.oid = c.relam \
          WHERE a.amname = 'mooncake' AND c.relnamespace = {})",
         namespace.to_u32()
     ))
-    .ok()
-    .flatten()
-    .unwrap_or(false)
+    .expect("checking for mirrors in the schema")
+    .unwrap();
+    pg_sys::PopActiveSnapshot();
+    found
 }
 
 /// Checks the statement's target table and those of data-modifying CTEs (`WITH x AS (DELETE FROM ...)`).
 unsafe fn reject_writes_to_mirrors(query: *mut pg_sys::Query) {
+    crate::duckdb_mooncake::prepare_attach();
     if query.is_null() {
         return;
     }

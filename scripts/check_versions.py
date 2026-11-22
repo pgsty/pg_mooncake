@@ -33,13 +33,24 @@ def main():
     require(capture("Cargo.toml", r'^version = "([^"]+)"'), release, "pg_mooncake")
     require(capture("Cargo.toml", r'^pgrx = "=([^"]+)"'), versions["pgrx"], "pgrx pin")
     require(capture("pg_duckdb/pg_duckdb.control", r"^default_version = '([^']+)'"), pg_duckdb_version, "pg_duckdb")
-    require(capture("src/sql/bootstrap.sql", r"installed_version IS DISTINCT FROM '([^']+)'"), pg_duckdb_version, "SQL dependency check")
-    require(capture("src/sql/bootstrap.sql", r"RAISE EXCEPTION 'pg_mooncake ([^']+); installed version"), f"{release} requires pg_duckdb {pg_duckdb_version}", "SQL version message")
+    install_sql = f"sql/pg_mooncake--0.3.1--{release}.sql"
+    require((ROOT / f"sql/pg_mooncake--0.3.0--{release}.sql").read_bytes(), (ROOT / install_sql).read_bytes(), "direct upgrade SQL")
+    require(capture(install_sql, r"installed_version IS DISTINCT FROM '([^']+)'"), pg_duckdb_version, "SQL dependency check")
+    require(capture(install_sql, r"RAISE EXCEPTION 'pg_mooncake ([^']+); installed version"), f"{release} requires pg_duckdb {pg_duckdb_version}", "SQL version message")
+    require(capture(install_sql, r"scanner IS DISTINCT FROM '([^']+)'"), versions["duckdb_mooncake"]["version"], "loaded scanner check")
     require(capture("Makefile", r'^DUCKDB_VERSION := (.+)$'), versions["duckdb"]["version"], "DuckDB build version")
     require(capture("duckdb_mooncake/extension_config.cmake", r'EXTENSION_VERSION (\S+)'), versions["duckdb_mooncake"]["version"], "DuckDB Mooncake version")
     moonlink_cargo_version = versions["moonlink"].get("cargo_version", versions["moonlink"]["version"])
     require(capture("moonlink/Cargo.toml", r'^version = "([^"]+)"'), moonlink_cargo_version, "Moonlink Cargo workspace version")
-    require(capture("duckdb_mooncake/moonlink_ffi/Cargo.toml", r'moonlink_rpc = .*rev = "([^"]+)"'), versions["moonlink"]["revision"], "RPC client/server revision")
+    for component in ("moonlink", "duckdb_mooncake"):
+        if not re.fullmatch(r"[0-9a-f]{40}", versions[component]["revision"] or ""):
+            raise ValueError(f"unbound release revision for {component} {versions[component]['tag']}")
+    source = capture(".gitmodules", r'\[submodule "moonlink"\]\n\s*path = moonlink\n\s*url = (.+)')
+    require(capture("duckdb_mooncake/moonlink_ffi/Cargo.toml", r'moonlink_rpc = .*git = "([^"]+)"'), source, "FFI source repository")
+    revision = versions["moonlink"]["revision"]
+    require(capture("duckdb_mooncake/moonlink_ffi/Cargo.toml", r'moonlink_rpc = .*rev = "([^"]+)"'), revision, "RPC client/server revision")
+    for package in ("moonlink_rpc", "moonlink_error"):
+        require(capture("duckdb_mooncake/moonlink_ffi/Cargo.lock", rf'^name = "{package}"\nversion = "[^"]+"\nsource = "([^"]+)"'), f"git+{source}?rev={revision}#{revision}", f"locked FFI {package}")
     rust_pg_top = set(re.findall(r'rust-postgres\.git",\s*rev = "([0-9a-f]+)"', (ROOT / "Cargo.toml").read_text(), re.IGNORECASE))
     rust_pg_ml = set(re.findall(r'rust-postgres\.git",\s*rev = "([0-9a-f]+)"', (ROOT / "moonlink/Cargo.toml").read_text(), re.IGNORECASE))
     if len(rust_pg_top) != 1 or rust_pg_top != rust_pg_ml:
@@ -63,10 +74,21 @@ def main():
                 raise ValueError(f"uninitialized submodule: {path}")
             actual = subprocess.check_output(["git", "-C", str(ROOT / path), "rev-parse", "HEAD"], text=True).strip()
             require(actual, expected, path)
+            parent, _, child = path.partition("/")
+            owner = ROOT / parent if child else ROOT
+            link = subprocess.check_output(["git", "-C", str(owner), "ls-tree", "HEAD", "--", child or path], text=True).split()
+            require(link[:3], ["160000", "commit", expected], f"committed gitlink {path}")
+            status = subprocess.check_output(["git", "--no-optional-locks", "-C", str(ROOT / path), "status", "--porcelain", "--untracked-files=normal"], text=True)
+            if status.strip():
+                raise ValueError(f"modified source in dependency {path}")
         for component in ("duckdb_mooncake", "moonlink"):
             tag = versions[component]["tag"]
             actual = subprocess.check_output(["git", "-C", str(ROOT / component), "rev-parse", f"refs/tags/{tag}^{{commit}}"], text=True).strip()
             require(actual, versions[component]["revision"], f"{component} {tag}")
+        upstream = versions["moonlink"]["upstream_revision"]
+        upstream_tag = subprocess.check_output(["git", "-C", str(ROOT / "moonlink"), "rev-parse", "refs/tags/v0.3.0^{commit}"], text=True).strip()
+        require(upstream_tag, upstream, "upstream-aligned Moonlink v0.3.0")
+        subprocess.run(["git", "-C", str(ROOT / "moonlink"), "merge-base", "--is-ancestor", upstream, revision], check=True)
     else:
         print("Source archive: Git revisions cannot be checked; use the recorded source manifest.")
     print(f"Version checks passed: pg_mooncake {release}, pg_duckdb {pg_duckdb_version}, pgrx {versions['pgrx']}.")

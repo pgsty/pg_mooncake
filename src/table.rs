@@ -87,33 +87,31 @@ extern "C-unwind" fn mooncake_slot_callbacks(
     unsafe { &pg_sys::TTSOpsMinimalTuple }
 }
 
-struct MooncakeScanDescData {
-    rs_base: pg_sys::TableScanDescData,
-}
-
-type MooncakeScanDesc = *mut MooncakeScanDescData;
-
 #[pg_guard]
 extern "C-unwind" fn mooncake_scan_begin(
     rel: pg_sys::Relation,
     snapshot: pg_sys::Snapshot,
     nkeys: c_int,
-    _key: *mut pg_sys::ScanKeyData,
+    key: *mut pg_sys::ScanKeyData,
     pscan: pg_sys::ParallelTableScanDesc,
     flags: pg_sys::uint32,
 ) -> pg_sys::TableScanDesc {
-    let mut scan = unsafe { PgBox::<MooncakeScanDescData>::alloc() };
-    scan.rs_base.rs_rd = rel;
-    scan.rs_base.rs_snapshot = snapshot;
-    scan.rs_base.rs_nkeys = nkeys;
-    scan.rs_base.rs_flags = flags;
-    scan.rs_base.rs_parallel = pscan;
-    scan.into_pg() as pg_sys::TableScanDesc
+    let mut scan = unsafe { PgBox::<pg_sys::TableScanDescData>::alloc0() };
+    scan.rs_rd = rel;
+    scan.rs_snapshot = snapshot;
+    scan.rs_nkeys = nkeys;
+    scan.rs_key = key;
+    scan.rs_flags = flags;
+    scan.rs_parallel = pscan;
+    scan.into_pg()
 }
 
 #[pg_guard]
 extern "C-unwind" fn mooncake_scan_end(scan: pg_sys::TableScanDesc) {
-    unsafe { PgBox::<MooncakeScanDescData>::from_rust(scan as MooncakeScanDesc) };
+    let scan = unsafe { PgBox::<pg_sys::TableScanDescData>::from_rust(scan) };
+    if scan.rs_flags & pg_sys::ScanOptions::SO_TEMP_SNAPSHOT != 0 {
+        unsafe { pg_sys::UnregisterSnapshot(scan.rs_snapshot) };
+    }
 }
 
 #[pg_guard]
@@ -498,7 +496,6 @@ extern "C-unwind" fn mooncake_relation_vacuum(
     _params: *mut pg_sys::VacuumParams,
     _bstrategy: pg_sys::BufferAccessStrategy,
 ) {
-    unimplemented!("mooncake_relation_vacuum");
 }
 
 #[pg_guard]
@@ -508,7 +505,6 @@ extern "C-unwind" fn mooncake_relation_vacuum(
     _params: *const pg_sys::VacuumParams,
     _bstrategy: pg_sys::BufferAccessStrategy,
 ) {
-    unimplemented!("mooncake_relation_vacuum");
 }
 
 #[pg_guard]

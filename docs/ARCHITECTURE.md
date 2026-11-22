@@ -1,8 +1,6 @@
 # pg_mooncake architecture
 
-**Submodule pins.** moonlink `37b040f9`, pg_duckdb `v1.0.0-mooncake.1` (Mooncake-Labs/pg_duckdb), duckdb_mooncake
-`bd9e5f3`, on DuckDB v1.4.1. This is the only place the docs list them. Statements tagged **[pins]**, here and in
-[AGENTS.md](../AGENTS.md), hold at these pins and must be re-verified when a pin moves.
+The release manifest in `versions.json` records dependency revisions. The table AM targets PostgreSQL 15–19.
 
 ## Processes and data flow
 
@@ -38,21 +36,26 @@
    then starts from each slot's confirmed position, so changes after the last snapshot are replayed from the slot. Then
    the Unix-socket RPC server. Logs go to stdout/stderr, which ends up in the Postgres log.
 4. **`mooncake.create_table(dst, src, src_uri, table_config)`** connects with libpq to `src_uri` (default: loopback via
-   the first `unix_socket_directories`) and reads `src`'s columns. It then runs `CREATE TABLE dst (…) USING mooncake` on a
-   **separate, autocommitted connection** (outside the caller's transaction), then sends RPC `CreateTable`. moonlink rejects
+   the first `unix_socket_directories`) and reads `src`'s columns. A separate destination transaction locks the
+   mirror name, records the destination schema OID, checks that the name is free and sends `CreateRegisteredTable`
+   before its first catalog write. Binding rechecks the schema OID under the table creation lock.
+   After the initial copy, `CREATE TABLE dst (…) USING mooncake` and the binding to the returned generation
+   commit together. Moonlink rejects
    unsupported column types (and partitioned sources without a primary key), sets `REPLICA IDENTITY FULL` on `src` and
    each of its partitions, adds `src` to the publication, copies an initial snapshot (staged under `initial_copy/`), and
    streams changes from the slot. It answers `CreateTable` only once the copy is persisted to Iceberg and the mirror is
    then recorded in its sqlite metadata store. **[pins]**
 5. **A query on `dst`**: pg_duckdb sends it to DuckDB. On load, duckdb_mooncake runs `pgmooncake_get_init_query`
    (`ATTACH … TYPE mooncake …`). Table lookup does RPC `GetTableSchema`. The scan does RPC
-   `ScanTableBegin(lsn = this backend's XactLastCommitEnd)`, then DuckDB's parquet reader reads the returned data files,
-   applies the deletion vectors and positional deletes, and finally sends `ScanTableEnd`. Rows not yet flushed are
+   `ScanTableBegin` on a connection owned by that scan. A read after a session commit samples the origin server's
+   WAL position and waits for replication to cover it. DuckDB reads the returned files and applies deletions.
+   Closing the connection releases that scan's read state. Rows not yet flushed are
    materialized as temp parquet files for the duration of the scan.
-6. **Dropping a mirror**: an `object_access_hook` notes that the dropped relation is a mirror, then the `sql_drop`
-   event trigger queues it, and a pre-commit transaction callback sends RPC `DropTable` if the drop is still in effect
-   (one 30 s deadline for all drops of the transaction). A failure becomes a WARNING and the DROP still commits
-   (invariants: [AGENTS.md](../AGENTS.md#2-other-invariants), section 2, item 5).
+6. **Dropping a mirror** records the drop in `mooncake.mirror_registrations` inside the DDL transaction.
+   A writable call to `mooncake.list_tables()` or `SELECT mooncake._reconcile_drops()` drains committed entries.
+   The embedded worker also schedules cleanup for registered databases. It rechecks orphaned PG-owned
+   registrations under the creator's name lock and removes abandoned generations. Each request names the recorded generation.
+   A timeout keeps the row available for retry, and stale requests leave a replacement generation intact.
    moonlink removes the table's files, its sqlite row, and the source's publication membership. Replication
    connections are keyed by `src_uri`: once the last mirror of a `src_uri` is gone, moonlink drops that slot and
    publication.
@@ -62,8 +65,7 @@ needed for DDL and planning, so direct DML on a mirror errors out.
 
 ## Wire format (moonlink_rpc), shared with the prebuilt duckdb_mooncake
 
-The invariants that keep it compatible are in [AGENTS.md](../AGENTS.md#1-contract-with-duckdb_mooncake-never-change-these),
-section 1.
+The fixed request and response frames are tested in `moonlink/src/moonlink_rpc/tests/wire_golden.rs`.
 
 Framing: u32 native-endian length + bincode `config::standard()` payload. Request = enum `Request` (variant **index**
 on the wire). Response = `Result<T, moonlink_error::ErrorStruct>`.
@@ -71,15 +73,20 @@ on the wire). Response = `Result<T, moonlink_error::ErrorStruct>`.
 | idx | Request | Fields | Response | Sent by |
 |---|---|---|---|---|
 | 0 | CreateSnapshot | database, table, lsn: u64 | () | pg_mooncake |
-| 1 | CreateTable | database, table, src, src_uri, table_config (JSON string) | () | pg_mooncake |
-| 2 | DropTable | database, table | () | pg_mooncake (pre-commit callback) |
+| 1 | CreateTable | database, table, src, src_uri, table_config (JSON string) | () | legacy and standalone clients |
+| 2 | DropTable | database, table | () | legacy clients |
 | 3 | GetParquetMetadatas | data_files | Vec<Vec<u8>> | nobody |
 | 4 | GetTableSchema | database, table | Arrow IPC stream (schema only) | duckdb_mooncake |
 | 5 | ListTables | – | Vec<Table{database, table, cardinality, commit_lsn, flush_lsn: Option, iceberg_warehouse_location}> | pg_mooncake |
-| 6 | LoadFiles | database, table, files | always an "unsupported" error **[pins]** | nobody: no SQL procedure exists in 0.3.0; the variant is kept for the wire order |
+| 6 | LoadFiles | database, table, files | unsupported | legacy clients |
 | 7 | OptimizeTable | database, table, mode (`data`/`index`/`full`) | () | pg_mooncake |
 | 8 | ScanTableBegin | database, table, lsn: u64 | Vec<u8> (layout below) | duckdb_mooncake |
 | 9 | ScanTableEnd | database, table | () | duckdb_mooncake |
+| 10 | Registration | database, table | optional generation | pg_mooncake |
+| 11 | DropRegistration | database, table, generation | () | pg_mooncake |
+| 12 | RegisteredDatabases | – | database names | maintenance and database DDL |
+| 13 | CreateRegisteredTable | same fields as CreateTable | new generation | pg_mooncake |
+| 14 | ManagedRegistrations | database | (table, generation) pairs | orphan cleanup |
 
 `table` is the unquoted `schema.table` string. The server keeps one `ReadState` per (database, table) per connection
 between `ScanTableBegin` and `ScanTableEnd`.
@@ -98,7 +105,7 @@ data file paths (concatenated bytes), puffin file paths (concatenated bytes)
 | Path | Contents |
 |---|---|
 | `moonlink_metadata_store.sqlite` | Registered tables + persisted table config: the recovery source of truth |
-| `<db>.<schema>.<table>/` | moonlink data files (`data-*.parquet`) and file indexes (`index_block_*.bin`) |
+| `temp/write_cache/v2-<digest>/` | Rebuildable per-mirror cache and file indexes |
 | `<db>/<schema>.<table>/{data,metadata}` | Iceberg table (filesystem catalog) |
 | `<db>/indicator.text` | Namespace marker of the filesystem Iceberg catalog |
 | `errored_tables/` | One marker per errored mirror with its message, so the errored state survives restarts |
@@ -111,7 +118,8 @@ data file paths (concatenated bytes), puffin file paths (concatenated bytes)
 
 ## Consistency model
 
-- Within a session, a read after a commit sees that commit: the scan waits for `XactLastCommitEnd`.
+- After a session commit, the scanner requests a watermark sampled on the mirror's source server.
+  Moonlink waits for replication through that position before opening the read state.
 - Other sessions see changes once moonlink applies them: about 0.5 s for small transactions, about 1–2 s after a
   200k-row transaction, measured locally.
 - **[pins]** moonlink keeps no write-ahead log. The replication slot's `confirmed_flush_lsn` is the minimum, over the

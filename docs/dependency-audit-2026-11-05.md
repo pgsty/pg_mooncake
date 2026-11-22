@@ -123,23 +123,47 @@ Raw JSON reports, the prior top-level lockfile and a summary recording the
 database revision are retained under the ignored local directory
 `target/validation/pgrx-0.20-pg19/`. These scans did not check yanked releases.
 
-## Follow-up: v0.3.1 / moonlink v0.3.0, 2026-11-22
+## Storage upgrade candidate, 2026-11-23
 
-Upgrading `moonlink` to `v0.3.0` (`dcf999a9`, Arrow/Parquet 56, removing
-Delta Lake, DataFusion, Kafka, OpenTelemetry, REST/Glue catalogs and GCS) and
-applying targeted lockfile updates (`openssl 0.10.82`, `openssl-sys 0.9.118`,
-`rustix 1.1.6`, `spin 0.9.9`) was audited with `cargo-deny check advisories`:
+With RustSec `8b75c83c3c9142dd18e93d75b8d895a13d285861`, `cargo audit` exited 0 on each
+complete lockfile. `cargo deny` used an empty ignore list and the default feature graph.
+Both checks counted zero vulnerability or unsoundness matches in all three components.
+Strict `cargo deny` exited 1 for unmaintained dependencies in each graph.
 
-| Lockfile | Vulnerability advisories | Unsoundness advisories |
-| --- | ---: | ---: |
-| Top-level `Cargo.lock` (`v0.3.1`) | 4 | 1 |
-| `moonlink/Cargo.lock` (`v0.3.0`) | 0 | 4 |
-| `duckdb_mooncake/moonlink_ffi/Cargo.lock` (`v0.0.3`) | 0 | 0 |
+| Component | Unmaintained advisories |
+| --- | --- |
+| pg_mooncake | RUSTSEC-2025-0141, RUSTSEC-2026-0543, RUSTSEC-2024-0436, RUSTSEC-2026-0441, RUSTSEC-2021-0127 |
+| Moonlink | RUSTSEC-2025-0141, RUSTSEC-2026-0543, RUSTSEC-2024-0436 |
+| Scanner FFI | RUSTSEC-2025-0141, RUSTSEC-2024-0436 |
 
-Remaining top-level vulnerabilities are all transitive dependencies constrained by
+Iceberg 0.11.0, OpenDAL 0.58.2 and Arrow/Parquet 58.4.2 resolve the XML, Thrift and
+Arrow advisories. SQLx 0.9.1 uses libsqlite3-sys 0.40.0. Optional profile builds render
+pprof samples with Inferno 0.12.8. The parent lockfile also removes the yanked core2 0.4.0.
+
+## Reviewed 0.3.1 and patched 0.3.2 candidates, 2026-11-22
+
+RustSec snapshot `248aea09726d5129d5616fa24535e5db1b84808b`, November 22, 2026.
+The `cargo audit --no-fetch --file ...` columns count vulnerability advisories across the complete lockfile.
+The `cargo deny check advisories` columns use the default dependency graph and a configuration with no
+advisory ignores. Both server locks include `url 2.5.9`, `form_urlencoded 1.2.3`,
+`quinn-proto 0.11.19` and `quinn-udp 0.5.16`. The workspace lock also updates
+`time`, `rust_decimal`, `event-listener`, `rustix` and `serial_test` within their existing
+manifest ranges. This removes the old optional `rkyv` and test-only `scc` versions.
+
+| Lockfile | Previous release, full | Reviewed HEAD, full | Patched, full | Patched graph vulnerabilities | Patched graph unsoundness |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pg_mooncake | 19 | 9 | 5 | 4 | 1 |
+| Moonlink | 28 | 22 | 9 | 4 | 1 |
+| Scanner FFI | 0 | 0 | 0 | 0 | 0 |
+
+The reviewed HEAD graphs had 5, 5 and 0 vulnerability matches respectively. The Moonlink workspace's own
+`deny.toml` applies a separate ignore policy.
+
+Remaining top-level default-graph vulnerabilities are transitive dependencies constrained by
 upstream crate major versions: `libsqlite3-sys` (`RUSTSEC-2026-0459`, via
 `sqlx-sqlite 0.8.6`), `quick-xml 0.37.5` (`RUSTSEC-2026-0194`, `RUSTSEC-2026-0195`,
 via `opendal 0.54.0`), and `thrift 0.17.0` (`RUSTSEC-2026-0435`, via
 `parquet 56.2.1` / `iceberg 0.7.0`). `arrow-data 56.2.1` retains the
 `RUSTSEC-2026-0442` unsoundness notice; unmaintained-crate notices (`bincode`,
-`chrono`, `core2`, `paste`, `pin-utils`, `serde_cbor`) remain.
+`chrono`, `core2`, `paste`, `pin-utils`, `serde_cbor`) remain. Cargo audit also reports
+the yanked `core2 0.4.0` in the PostgreSQL lockfile.

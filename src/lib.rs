@@ -12,6 +12,11 @@ use pgrx::prelude::*;
 
 pg_module_magic!();
 extension_sql_file!("./sql/bootstrap.sql", bootstrap);
+extension_sql_file!(
+    "../sql/pg_mooncake--0.3.1--0.3.2.sql",
+    name = "mirror_lifecycle",
+    finalize
+);
 
 #[pg_guard]
 extern "C-unwind" fn _PG_init() {
@@ -29,6 +34,7 @@ extern "C-unwind" fn _PG_init() {
     #[cfg(feature = "bgworker")]
     bgworker::init();
     table::init();
+    duckdb_mooncake::init();
     drop_tracking::init();
     mirror_writes::init();
 }

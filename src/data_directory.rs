@@ -10,7 +10,7 @@ use pgrx::prelude::*;
 use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Read, Write};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -47,8 +47,14 @@ pub(crate) fn init() {
     );
     let value = DATA_DIRECTORY
         .get()
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_string()
+        .unwrap_or_else(|_| {
+            config_error(
+                "mooncake.data_directory must be valid UTF-8".to_owned(),
+                None,
+            )
+        });
     let _ = VALUE.set(value);
     validate();
 }
@@ -167,7 +173,7 @@ fn validate() {
             None,
         );
     }
-    let data_dir = canonical(Path::new(&postgres_data_directory()));
+    let data_dir = canonical(Path::new("."));
     let canonical_dir = canonical(path);
     if data_dir.starts_with(&canonical_dir) {
         config_error(
@@ -180,7 +186,12 @@ fn validate() {
     // Without the background worker, moonlink runs on its own, owns the directory and is expected to be listening.
     if cfg!(feature = "bgworker") {
         lock(path, &dir);
-        if socket_accepts_connections(&socket) {
+        if socket_accepts_connections(&socket).unwrap_or_else(|err| {
+            config_error(
+                format!("could not check moonlink socket {socket}: {err}"),
+                None,
+            )
+        }) {
             in_use_error(
                 &dir,
                 format!("Its moonlink socket {socket} accepts connections."),
@@ -208,7 +219,9 @@ fn postgres_data_directory() -> String {
 }
 
 fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+    std::fs::canonicalize(path).unwrap_or_else(|err| {
+        config_error(format!("could not resolve {}: {err}", path.display()), None)
+    })
 }
 
 fn in_use_error(dir: &str, detail: String) -> ! {
@@ -276,59 +289,44 @@ fn lock(path: &Path, dir: &str) {
 }
 
 /// Whether a server listens on the moonlink socket. The connect doesn't block: a listener with a full backlog counts
-/// as listening, and an in-progress connect gets half a second.
-fn socket_accepts_connections(socket: &str) -> bool {
+/// as listening, as does a connection still in progress.
+fn socket_accepts_connections(socket: &str) -> std::io::Result<bool> {
     unsafe {
-        let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
-        if fd < 0 {
-            return false;
+        let raw_fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
+        if raw_fd < 0 {
+            return Err(std::io::Error::last_os_error());
         }
-        if libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) < 0 {
-            libc::close(fd);
-            return false;
+        let fd = OwnedFd::from_raw_fd(raw_fd);
+        if libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) < 0 {
+            return Err(std::io::Error::last_os_error());
         }
-        let flags = libc::fcntl(fd, libc::F_GETFL, 0);
-        if flags < 0 || libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
-            libc::close(fd);
-            return false;
+        let flags = libc::fcntl(fd.as_raw_fd(), libc::F_GETFL);
+        if flags < 0 || libc::fcntl(fd.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
+            return Err(std::io::Error::last_os_error());
         }
         let mut addr: libc::sockaddr_un = std::mem::zeroed();
         addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
         for (dst, src) in addr.sun_path.iter_mut().zip(socket.as_bytes()) {
             *dst = *src as libc::c_char;
         }
+        let len = std::mem::offset_of!(libc::sockaddr_un, sun_path) + socket.len() + 1;
+        #[cfg(target_os = "macos")]
+        {
+            addr.sun_len = len as u8;
+        }
         let rc = libc::connect(
-            fd,
+            fd.as_raw_fd(),
             std::ptr::addr_of!(addr).cast(),
-            std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t,
+            len as libc::socklen_t,
         );
-        let listening = if rc == 0 {
-            true
-        } else {
-            match std::io::Error::last_os_error().raw_os_error() {
-                Some(libc::EAGAIN) => true,
-                Some(libc::EINPROGRESS) => {
-                    let mut pollfd = libc::pollfd {
-                        fd,
-                        events: libc::POLLOUT,
-                        revents: 0,
-                    };
-                    let mut error: libc::c_int = 0;
-                    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
-                    libc::poll(&mut pollfd, 1, 500) > 0
-                        && libc::getsockopt(
-                            fd,
-                            libc::SOL_SOCKET,
-                            libc::SO_ERROR,
-                            std::ptr::addr_of_mut!(error).cast(),
-                            &mut len,
-                        ) == 0
-                        && error == 0
-                }
-                _ => false,
-            }
-        };
-        libc::close(fd);
-        listening
+        if rc == 0 {
+            return Ok(true);
+        }
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::ENOENT | libc::ECONNREFUSED) => Ok(false),
+            Some(libc::EAGAIN | libc::EINPROGRESS) => Ok(true),
+            _ => Err(err),
+        }
     }
 }

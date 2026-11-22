@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end tests against a disposable PG17/18/19 database (requires psycopg 3).
+"""End-to-end tests against a disposable PG15–19 database (requires psycopg 3).
 
 Run normally, restart PostgreSQL, then run with --after-restart. Connection
 parameters come from libpq's PGHOST/PGPORT/PGUSER/PGDATABASE environment variables.
@@ -7,15 +7,17 @@ parameters come from libpq's PGHOST/PGPORT/PGUSER/PGDATABASE environment variabl
 
 import argparse
 import json
-import os
+import time
 
 import psycopg
 
 
 def main():
+    if not __debug__:
+        raise RuntimeError("Run the integration test with Python assertions enabled")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--after-restart", action="store_true")
-    parser.add_argument("--pg-major", type=int, choices=(17, 18, 19), default=18)
+    parser.add_argument("--pg-major", type=int, choices=range(15, 20), default=18)
     args = parser.parse_args()
     with psycopg.connect(autocommit=True, prepare_threshold=None) as conn:
         conn.execute("SET statement_timeout = '120s'")
@@ -34,13 +36,25 @@ def main():
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
         assert versions == [("1.2.1",)], versions
         assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
-        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.1",)]
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.2",)]
+        if args.after_restart:
+            if not rows("SELECT started < pg_postmaster_start_time() FROM mooncake_it.restart_check")[0][0]:
+                raise RuntimeError("PostgreSQL must restart between the two integration phases")
+            deadline = time.monotonic() + 90
+            while True:
+                try:
+                    assert rows("SELECT mooncake._generation('mooncake_it.mirror') IS NOT NULL") == [(True,)]
+                    break
+                except psycopg.Error as exc:
+                    if "failed to connect to moonlink" not in str(exc) or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.25)
         assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.1",)]
         assert rows("""
             SELECT * FROM duckdb.query($$
                 SELECT loaded, extension_version FROM duckdb_extensions() WHERE extension_name = 'mooncake'
             $$)
-        """) == [(True, "v0.0.3")]
+        """) == [(True, "v0.0.4")]
 
         if args.after_restart:
             compare()
@@ -57,6 +71,65 @@ def main():
             return
 
         conn.execute("CREATE SCHEMA mooncake_it")
+        conn.execute("CREATE TABLE mooncake_it.restart_check AS SELECT pg_postmaster_start_time() AS started")
+        conn.execute("CREATE TABLE mooncake_it.ssi(id int PRIMARY KEY, val int)")
+        conn.execute("INSERT INTO mooncake_it.ssi VALUES (1, 0), (2, 0)")
+        create_mirror = "CALL mooncake.create_table('mooncake_it.ssi_m', 'mooncake_it.ssi')"
+        try:
+            with conn.transaction():
+                conn.execute(create_mirror)
+        except psycopg.errors.ActiveSqlTransaction:
+            pass
+        else:
+            raise AssertionError("mirror creation inside a transaction must be rejected")
+        conn.execute("SET default_transaction_read_only = on")
+        try:
+            conn.execute(create_mirror)
+        except psycopg.errors.ReadOnlySqlTransaction:
+            pass
+        else:
+            raise AssertionError("mirror creation in a read-only session must be rejected")
+        finally:
+            conn.execute("RESET default_transaction_read_only")
+        assert rows("SELECT to_regclass('mooncake_it.ssi_m'), mooncake._generation('mooncake_it.ssi_m')") == [(None, None)]
+        checkpoint("transaction and read-only guards leave both catalogs untouched")
+        conn.execute(create_mirror)
+        assert rows("""SELECT pronargdefaults FROM pg_catalog.pg_proc
+                       WHERE oid = 'mooncake._bind_mirror(regclass,text)'::regprocedure""") == [(0,)]
+        for invalid_generation in (None, "legacy"):
+            try:
+                conn.execute("SELECT mooncake._bind_mirror('mooncake_it.ssi_m', %s)", (invalid_generation,))
+            except psycopg.errors.InvalidParameterValue:
+                pass
+            else:
+                raise AssertionError("binding must require a PostgreSQL-managed generation")
+        checkpoint("new bindings require the generation issued for a managed mirror")
+        with psycopg.connect(autocommit=True) as other:
+            for session in (conn, other):
+                session.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+            conn.execute("SELECT val FROM mooncake_it.ssi WHERE id = 1")
+            other.execute("SELECT val FROM mooncake_it.ssi WHERE id = 2")
+            conn.execute("UPDATE mooncake_it.ssi SET val = 1 WHERE id = 2")
+            conn.execute("DROP TABLE mooncake_it.ssi_m")
+            other.execute("UPDATE mooncake_it.ssi SET val = 2 WHERE id = 1")
+            other.execute("COMMIT")
+            try:
+                conn.execute("COMMIT")
+            except psycopg.errors.SerializationFailure:
+                pass
+            else:
+                raise AssertionError("expected the dropping transaction to fail serialization")
+        conn.execute("CALL mooncake.create_snapshot('mooncake_it.ssi_m')")
+        assert rows("SELECT * FROM mooncake_it.ssi_m ORDER BY id") == [(1, 2), (2, 0)]
+        checkpoint("a serialization rollback preserves the original mirror and its replication")
+        old_generation = rows("SELECT mooncake._generation('mooncake_it.ssi_m')")[0][0]
+        conn.execute("DROP TABLE mooncake_it.ssi_m")
+        conn.execute("CALL mooncake.create_table('mooncake_it.ssi_m', 'mooncake_it.ssi')")
+        assert rows("SELECT mooncake._retire('mooncake_it.ssi_m', %s)", (old_generation,)) == [(True,)]
+        assert rows("SELECT * FROM mooncake_it.ssi_m ORDER BY id") == [(1, 2), (2, 0)]
+        conn.execute("VACUUM (ANALYZE) mooncake_it.ssi_m")
+        conn.execute("DROP TABLE mooncake_it.ssi_m, mooncake_it.ssi")
+        checkpoint("a delayed cleanup preserves a replacement mirror; VACUUM ANALYZE succeeds")
         conn.execute("""
             CREATE TABLE mooncake_it.source (
                 id bigint PRIMARY KEY,
