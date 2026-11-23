@@ -12,7 +12,7 @@
   "duckdb_mooncake": {
     "version": "v0.0.5",
     "tag": "v0.0.5",
-    "revision": "c6e2437200ee81640c13caec643dec4dd341b87e"
+    "revision": "fef268def430444bb7aadd7afbb8f0c8fc605b57"
   },
   "moonlink": {
     "version": "0.3.0-pgsty.2",

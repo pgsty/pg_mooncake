@@ -221,6 +221,9 @@ the cached scanner before the update, then reconnect so the backend loads the ne
 SELECT duckdb.raw_query(format('FORCE INSTALL mooncake FROM %L', current_setting('mooncake.extension_repository')));
 ```
 
+After the update, take a fresh snapshot of each mirror before using it for a backup or migration.
+An earlier worker could acknowledge a source commit before Iceberg had persisted it.
+
 Before renaming or dropping a database with mirrors, drop its mirrors, commit and run
 `SELECT mooncake._reconcile_drops()` there. These database operations require the worker to be available
 to verify the registrations. After a server restart the RPC socket becomes ready when mirror recovery finishes.
