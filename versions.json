@@ -1,5 +1,5 @@
 {
-  "pg_mooncake": "0.3.2",
+  "pg_mooncake": "0.3.3",
   "pgrx": "0.20.0",
   "pg_duckdb": {
     "version": "1.2.1",
@@ -10,15 +10,15 @@
     "revision": "8d78114e90a53823803660bf821f6073ac87da8c"
   },
   "duckdb_mooncake": {
-    "version": "v0.0.4",
-    "tag": "v0.0.4",
-    "revision": "da60e59d9692f9b784ee1c72596c1d751199c2ec"
+    "version": "v0.0.5",
+    "tag": "v0.0.5",
+    "revision": "c6e2437200ee81640c13caec643dec4dd341b87e"
   },
   "moonlink": {
-    "version": "0.3.0-pgsty.1",
+    "version": "0.3.0-pgsty.2",
     "cargo_version": "0.0.1",
-    "tag": "v0.3.0-pgsty.1",
+    "tag": "v0.3.0-pgsty.2",
     "upstream_revision": "dcf999a9f342f8e74242b85cfe4d893c26f9e4be",
-    "revision": "71c9dfcfa81d970ad68bc445b6db5f0f41836090"
+    "revision": "bae6634bf691c3153ff41985d823dcedc2bd949b"
   }
 }

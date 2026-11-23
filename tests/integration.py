@@ -36,7 +36,7 @@ def main():
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
         assert versions == [("1.2.1",)], versions
         assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
-        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.2",)]
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.3",)]
         if args.after_restart:
             if not rows("SELECT started < pg_postmaster_start_time() FROM mooncake_it.restart_check")[0][0]:
                 raise RuntimeError("PostgreSQL must restart between the two integration phases")
@@ -54,7 +54,7 @@ def main():
             SELECT * FROM duckdb.query($$
                 SELECT loaded, extension_version FROM duckdb_extensions() WHERE extension_name = 'mooncake'
             $$)
-        """) == [(True, "v0.0.4")]
+        """) == [(True, "v0.0.5")]
 
         if args.after_restart:
             compare()

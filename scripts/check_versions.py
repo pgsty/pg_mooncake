@@ -35,6 +35,7 @@ def main():
     require(capture("pg_duckdb/pg_duckdb.control", r"^default_version = '([^']+)'"), pg_duckdb_version, "pg_duckdb")
     install_sql = f"sql/pg_mooncake--0.3.1--{release}.sql"
     require((ROOT / f"sql/pg_mooncake--0.3.0--{release}.sql").read_bytes(), (ROOT / install_sql).read_bytes(), "direct upgrade SQL")
+    require((ROOT / f"sql/pg_mooncake--0.3.2--{release}.sql").read_text().strip(), (ROOT / install_sql).read_text().split("\n\n", 1)[0], "0.3.2 upgrade dependency checks")
     require(capture(install_sql, r"installed_version IS DISTINCT FROM '([^']+)'"), pg_duckdb_version, "SQL dependency check")
     require(capture(install_sql, r"RAISE EXCEPTION 'pg_mooncake ([^']+); installed version"), f"{release} requires pg_duckdb {pg_duckdb_version}", "SQL version message")
     require(capture(install_sql, r"scanner IS DISTINCT FROM '([^']+)'"), versions["duckdb_mooncake"]["version"], "loaded scanner check")

@@ -1,3 +1,8 @@
+## 0.3.3 (2026-11-23)
+
+- Use Moonlink `v0.3.0-pgsty.2`. A forced snapshot could report a source commit before Iceberg persisted it. Take a fresh snapshot with the updated worker before using it as a backup or migration boundary.
+- Pin scanner `v0.0.5` to the same Moonlink revision. The direct update from 0.3.2 checks the loaded scanner and preserves existing mirror registrations.
+
 ## 0.3.2 (2026-11-23)
 
 - Match the PG18 runtime package to the build headers. New mirror bindings require the generation returned by the create operation. Only the upgrade script imports historical registrations.
