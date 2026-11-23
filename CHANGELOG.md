@@ -1,10 +1,11 @@
-## 0.3.2 candidate
+## 0.3.2 (2026-11-23)
 
 - Match the PG18 runtime package to the build headers. New mirror bindings require the generation returned by the create operation. Only the upgrade script imports historical registrations.
 - Add direct updates from 0.3.0 and 0.3.1. Check the loaded scanner, bind existing mirrors and remove the old `load_files` entry point. The upgrade procedure includes a snapshot and comparison on the old worker before retaining its `_wal` offline.
 - Bind each PG mirror to a Moonlink generation. Committed drops and interrupted creates can be reconciled after restart. A stale cleanup request cannot remove a replacement generation.
 - Use scanner v0.0.4 with independent scan connections. Reads and snapshots that require freshness use the source server's WAL position.
 - Close Moonlink's source connections when PostgreSQL enters smart shutdown so locally mirrored tables do not keep the postmaster waiting.
+- Document the local scanner settings for a fresh installation. Ship a source archive with all pinned submodules and support building pg_duckdb from the unpacked archive.
 - Upgrade the storage stack to Iceberg 0.11, Arrow/Parquet 58.4.2 and SQLx 0.9.1. The November 23 audit found zero vulnerability and unsoundness matches in all three lockfiles and default graphs. Strict default-graph checks report five, three and two unmaintained dependencies for pg_mooncake, Moonlink and FFI respectively. See [the dependency audit](docs/dependency-audit-2026-11-05.md).
 
 ## 0.3.1 (2026-11-22)

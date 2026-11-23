@@ -47,12 +47,9 @@ pig repo add pgsql -u
 pig ext add pg_mooncake pg_duckdb
 ```
 
-Then configure `shared_preload_libraries` and `wal_level = logical` in `postgresql.conf` and restart PostgreSQL:
-
-```ini
-shared_preload_libraries = 'pg_duckdb,pg_mooncake'
-wal_level = logical
-```
+Before creating the extension, [configure PostgreSQL](#configure-postgresql) to load the scanner
+shipped with the package. A fresh installation needs the local scanner repository and permission
+to load its unsigned extension.
 
 ### Option 2: Docker
 
@@ -114,10 +111,22 @@ sudo dnf install gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config \
     protobuf-compiler python3-pip postgresql17-devel
 ```
 
-Then, clone the repository:
+Clone the tagged release with its submodules:
+
 ```bash
-git clone --recurse-submodules https://github.com/pgsty/pg_mooncake.git
+git clone --recurse-submodules --branch v0.3.2 https://github.com/pgsty/pg_mooncake.git
 cd pg_mooncake
+```
+
+Alternatively, download `pg_mooncake-0.3.2-source.tar.gz` and `SHA256SUMS` from the
+[v0.3.2 release](https://github.com/pgsty/pg_mooncake/releases/tag/v0.3.2). This archive includes
+the pinned submodule sources. GitHub's automatic source archives omit their contents.
+On macOS, use `shasum -a 256 -c SHA256SUMS` for the checksum step.
+
+```bash
+sha256sum -c SHA256SUMS
+tar -xzf pg_mooncake-0.3.2-source.tar.gz
+cd pg_mooncake-0.3.2
 ```
 
 To build and install for PostgreSQL 17 on EL10, run:
@@ -156,24 +165,28 @@ Replication sets `REPLICA IDENTITY FULL` on existing leaf partitions before it s
 `make package PG_VERSION=pg17 PG_CONFIG=/usr/pgsql-17/bin/pg_config` stages both
 extensions under `target/release/pg_mooncake-pg17/`.
 
-Finally, configure PostgreSQL and restart it. On EL10 with PostgreSQL 17:
+### Configure PostgreSQL
+
+Run `pg_config --sharedir` from the target PostgreSQL installation and append `/extension/pg_mooncake`
+to get the absolute scanner repository path. For example, on EL10 with PostgreSQL 17, set the
+following in `postgresql.conf` and restart PostgreSQL:
+
 ```ini
-duckdb.allow_community_extensions = true
 duckdb.allow_unsigned_extensions = true
 mooncake.extension_repository = '/usr/pgsql-17/share/extension/pg_mooncake'
-# Optional: place moonlink files and socket outside PGDATA so pg_basebackup works.
+# For physical backups or streaming standbys, set this before creating mirrors.
 # mooncake.data_directory = '/var/lib/pgsql/17/mooncake'
 shared_preload_libraries = 'pg_duckdb,pg_mooncake'
 wal_level = logical
 ```
 
-The unsigned-extension setting is required for the locally built DuckDB extension.
-Set `mooncake.extension_repository` to the matching installation path if your
-PostgreSQL installation uses a different prefix. When this setting is absent,
-extension creation retains the upstream behavior of using the community repository.
+In a fresh session run `CREATE EXTENSION pg_mooncake CASCADE;`. The packaged scanner loads from
+the configured local repository with `duckdb.allow_community_extensions` left at its default `off`.
 Use a UTF-8 path for `mooncake.data_directory`. Relative paths are resolved from the PostgreSQL data directory.
 Set `mooncake.data_directory` to a server-owned directory outside `$PGDATA`
-(mode `0700` or `0750`) when using `pg_basebackup` or streaming standbys; see
+(mode `0700` or `0750`) and back it up separately when using `pg_basebackup` or streaming standbys.
+With a non-UTF-8 PostgreSQL data path, also set `duckdb.temporary_directory` and `duckdb.extension_directory`
+to instance-owned, writable UTF-8 paths. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for lifecycle details.
 
 ### Upgrading a PGSTY 0.3.0 installation
@@ -281,8 +294,9 @@ numbers. Both DuckDB submodules must match pg_duckdb's DuckDB
 revision. Pin the DuckDB extension's Moonlink RPC client to the same Moonlink
 commit as the server, tag each changed dependency, update its tag and commit in
 `versions.json`, regenerate the affected Cargo lockfiles, then rerun
-`make check-versions` and the build/integration tests. Source archives lack Git
-metadata, so their commit pins must be verified before archiving.
+`make check-versions` and the build/integration tests. From the release commit, run
+`python3 scripts/source_archive.py /path/to/pg_mooncake-VERSION-source.tar.gz` to export the
+committed source trees, including nested submodules. Publish the archive with its SHA-256 checksum.
 
 Audit the top-level, Moonlink workspace and FFI lockfiles before dependency
 updates. Prefer fixes within the existing compatibility range; record remaining
