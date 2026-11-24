@@ -1,4 +1,4 @@
-## 0.3.4 (unreleased)
+## 0.3.4 (2026-11-24)
 
 - Accept pg_duckdb 1.2.1 and later on installation and upgrade. The reference build uses pg_duckdb 1.2.2 with DuckDB 2.0.1. Operators choosing a newer engine must supply a compatible build of scanner v0.0.5.
 - Build pg_duckdb with the pinned module version in both Git checkouts and source archives.
