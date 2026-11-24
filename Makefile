@@ -68,13 +68,15 @@ package: duckdb_mooncake
 	install -m 644 "$(MOONCAKE_BUILD)/extension/mooncake/mooncake.duckdb_extension" "$$repository/"; \
 	python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$$stage" "$(PACKAGE_DIR)"
 
+PG_DUCKDB_VERSION = $(shell python3 -c 'import json; print(json.load(open("versions.json"))["pg_duckdb"]["version"])')
 ifeq ($(wildcard pg_duckdb/.git),)
-PG_DUCKDB_SOURCE_FLAGS = -o .git/modules/third_party/duckdb/HEAD \
-	PG_DUCKDB_VERSION=$(shell python3 -c 'import json; print(json.load(open("versions.json"))["pg_duckdb"]["version"])')
+PG_DUCKDB_SOURCE_FLAGS = -o .git/modules/third_party/duckdb/HEAD
 endif
 
 pg_duckdb: check-versions
-	@$(MAKE) -C pg_duckdb $(PG_DUCKDB_SOURCE_FLAGS) install -j$(JOBS)
+	@# Refresh the object containing the module version when an existing checkout changes pins.
+	@$(MAKE) -C pg_duckdb $(PG_DUCKDB_SOURCE_FLAGS) -W src/pgduckdb.cpp \
+		PG_DUCKDB_VERSION=$(PG_DUCKDB_VERSION) install -j$(JOBS)
 
 run: pg_duckdb install-duckdb-mooncake
 	@cargo pgrx run $(PG_VERSION) --install-only --no-default-features --features $(PG_VERSION),bgworker --cargo=--locked
