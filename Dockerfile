@@ -46,8 +46,8 @@ RUN pgrx_version=$(sed -n 's/^pgrx = "=\{0,1\}\(.*\)"/\1/p' Cargo.toml) \
 COPY pg_duckdb pg_duckdb
 RUN test -f pg_duckdb/third_party/duckdb/CMakeLists.txt \
  && DUCKDB_COMMIT="$(python3 -c 'import json; print(json.load(open("versions.json"))["duckdb"]["revision"])')" \
-    make -C pg_duckdb -o .git/modules/third_party/duckdb/HEAD install -j"$JOBS" \
-    PG_CONFIG="$PG_CONFIG" PG_DUCKDB_VERSION="$(python3 -c 'import json; print(json.load(open("versions.json"))["pg_duckdb"]["version"])')"
+    make -C pg_duckdb -f Makefile -f ../scripts/pg_duckdb.mk -o .git/modules/third_party/duckdb/HEAD \
+    install -j"$JOBS" PG_CONFIG="$PG_CONFIG"
 
 COPY duckdb_mooncake duckdb_mooncake
 COPY moonlink moonlink

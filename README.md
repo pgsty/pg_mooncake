@@ -200,9 +200,20 @@ database with mirrors** before switching libraries.
    storage configuration. Keep a recoverable backup of the PostgreSQL cluster and the complete Moonlink directory.
 2. On the **old binaries**, wait until each mirror matches its quiescent source. Compare all columns in both directions
    with `EXCEPT ALL` to include duplicates. For a remote source, compare consistent exports from both servers.
-   In a fresh session call `CALL mooncake.create_snapshot('schema.mirror')` on each mirror. Record
-   `commit_lsn` and `flush_lsn` from `mooncake.list_tables()` and verify that the snapshot covers the mirror's last
-   data change. For an empty mirror, also check that its source is empty.
+   Record each caught-up mirror's `commit_lsn` from `mooncake.list_tables()`. The 0.3.0 snapshot procedure
+   uses the calling session's last commit LSN. For a source on the same PostgreSQL cluster, run these two
+   statements in the same session with autocommit enabled. The transactional WAL message gives the snapshot
+   a position after the last source write.
+
+   ```sql
+   SELECT pg_catalog.pg_logical_emit_message(true, 'pg_mooncake_upgrade', 'snapshot');
+   CALL mooncake.create_snapshot('schema.mirror');
+   ```
+
+   For a source on another cluster, call the procedure in a fresh session and allow the old worker's periodic
+   Iceberg snapshot to run. In both cases, recheck `mooncake.list_tables()` and proceed only when `flush_lsn`
+   covers the recorded source change, including a deletion that emptied a mirror. A fresh session can return
+   from the procedure while the last change is still only in the private WAL.
 3. Stop PostgreSQL cleanly. After the checks in step 2, move the old `_wal` outside the active Moonlink directory
    and retain it with the backup. The new worker refuses a nonempty `_wal`. Install the matched PostgreSQL
    extension, pg_duckdb and scanner, then start PostgreSQL. In each database update pg_duckdb to match its

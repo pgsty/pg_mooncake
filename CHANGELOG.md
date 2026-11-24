@@ -3,6 +3,7 @@
 - Accept pg_duckdb 1.2.1 and later on installation and upgrade. The reference build uses pg_duckdb 1.2.2 with DuckDB 2.0.1. Operators choosing a newer engine must supply a compatible build of scanner v0.0.5.
 - Build pg_duckdb with the pinned module version in both Git checkouts and source archives.
 - Provide direct SQL upgrades from PGSTY 0.3.0 through 0.3.3. Existing 0.3.2 and 0.3.3 mirror registrations are preserved.
+- Document how to flush the last source change before retiring the 0.3.0 worker's private WAL.
 
 ## 0.3.3 (2026-11-23)
 
