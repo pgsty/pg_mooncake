@@ -3,7 +3,7 @@
 [![Website: mooncake.pgsty.com](https://img.shields.io/badge/Website-mooncake.pgsty.com-slategray?style=flat&logo=cilium&logoColor=white)](https://mooncake.pgsty.com/)
 [![Docs: pg_mooncake](https://img.shields.io/badge/Docs-pg__mooncake-slategray?style=flat)](https://mooncake.pgsty.com/docs/)
 [![Catalog: pg_mooncake](https://img.shields.io/badge/Catalog-pg__mooncake-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
-[![Version: v0.3.3](https://img.shields.io/badge/Version-v0.3.3-slategray?style=flat)](https://github.com/pgsty/pg_mooncake/releases)
+[![Source version: v0.3.4](https://img.shields.io/badge/Source-v0.3.4-slategray?style=flat)](versions.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-slategray?style=flat&logo=opensourceinitiative&logoColor=green)](https://github.com/pgsty/pg_mooncake/blob/main/LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/pgsty/pg_mooncake?style=flat&logo=github&logoColor=black&color=slategray)](https://star-history.com/#pgsty/pg_mooncake&Date)
 [![PostgreSQL: 15-19](https://img.shields.io/badge/PostgreSQL-15--19-%233E668F?style=flat&logo=postgresql&logoColor=white&labelColor=3E668F)](https://pgext.cloud/ext/pg_mooncake)
@@ -18,7 +18,7 @@
 
 `pg_mooncake` is the core PostgreSQL extension of the **Mooncake** family maintained by [PGSTY](https://pgsty.com):
 
-- **[`pg_mooncake`](https://github.com/pgsty/pg_mooncake)** ([Docs](https://mooncake.pgsty.com/docs/intro/) / [Meta](https://pgext.cloud/ext/pg_mooncake)): PostgreSQL 15–19 extension (`v0.3.3`, MIT) providing `mooncake.create_table()`, logical replication workers, and transparent query routing via `pg_duckdb` `1.2.1`.
+- **[`pg_mooncake`](https://github.com/pgsty/pg_mooncake)** ([Docs](https://mooncake.pgsty.com/docs/intro/) / [Meta](https://pgext.cloud/ext/pg_mooncake)): PostgreSQL 15–19 extension (`v0.3.4`, MIT) providing `mooncake.create_table()`, logical replication workers, and transparent query routing via `pg_duckdb` 1.2.1 or newer.
 - **[`moonlink`][moonlink-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/moonlink/)): Rust real-time Iceberg v3 ingestion engine (`v0.3.0-pgsty.2`, BSL-1.1 with `pg_mooncake` Linking & Distribution Exception; client crates MIT).
 - **[`duckdb_mooncake`][duckdb-mooncake-link]** ([Docs](https://mooncake.pgsty.com/docs/intro/duckdb-mooncake/)): DuckDB `v2.0.1` storage & catalog scanner extension (`v0.0.5`, MIT) merging in-memory Arrow IPC buffers, Roaring deletion vectors, and flushed Parquet files with LSN snapshot consistency.
 
@@ -66,7 +66,12 @@ docker exec -it mooncake psql -U postgres
 
 ### Option 3: From Source
 
-This fork's **pg_mooncake 0.3.3** requires **pg_duckdb 1.2.1 and DuckDB 2.0.1**.
+**pg_mooncake 0.3.4** accepts **pg_duckdb 1.2.1 or newer**, with no upper version limit.
+The reference build uses pg_duckdb 1.2.2 with DuckDB 2.0.1. When you select a different
+pg_duckdb build, verify that it provides the table access method registration and SQL interfaces
+Mooncake uses. Supply scanner v0.0.5 built for its embedded DuckDB version and platform.
+DuckDB checks the scanner binary when loading it. Installing or updating pg_mooncake also
+checks the version of the loaded scanner.
 pg_mooncake has its own release version. `versions.json` records the dependency
 tags, exact submodule commits, both DuckDB source revisions, and
 pgrx/cargo-pgrx **0.20.0**. Source builds require **Rust 1.99.1** or newer
@@ -76,10 +81,7 @@ For example, an extension built against the 18.7 headers can require `heap_datum
 which the 18.6 server does not export. The Dockerfile installs the build headers' exact
 Debian package version in the runtime image.
 pgrx 0.20 no longer supports PostgreSQL 14; use the 0.3.0 release for PG14.
-Builds check these pins and use Cargo lockfiles; extension creation rejects a
-different installed pg_duckdb version.
-The DuckDB Mooncake extension must be rebuilt along with this upgrade: a binary
-compiled for DuckDB 1.4.x or 2.0.0 cannot be loaded by DuckDB 2.0.1.
+Source builds verify the recorded pins and use Cargo lockfiles.
 
 The dependencies are `duckdb_mooncake v0.0.5` and `Moonlink v0.3.0-pgsty.2`. Their Git
 submodules remain pinned to the full commits recorded in `versions.json`; the
@@ -111,22 +113,21 @@ sudo dnf install gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config \
     protobuf-compiler python3-pip postgresql17-devel
 ```
 
-Clone the tagged release with its submodules:
+Clone the repository with its submodules. To build a published release, add its tag with `--branch`:
 
 ```bash
-git clone --recurse-submodules --branch v0.3.3 https://github.com/pgsty/pg_mooncake.git
+git clone --recurse-submodules https://github.com/pgsty/pg_mooncake.git
 cd pg_mooncake
 ```
 
-Alternatively, download `pg_mooncake-0.3.3-source.tar.gz` and `SHA256SUMS` from the
-[v0.3.3 release](https://github.com/pgsty/pg_mooncake/releases/tag/v0.3.3). This archive includes
-the pinned submodule sources. GitHub's automatic source archives omit their contents.
-On macOS, use `shasum -a 256 -c SHA256SUMS` for the checksum step.
+Published [releases](https://github.com/pgsty/pg_mooncake/releases) include a full source archive and
+`SHA256SUMS`. The full archive includes the pinned submodules. To unpack a 0.3.4 archive,
+use the commands below (on macOS, use `shasum -a 256 -c SHA256SUMS`).
 
 ```bash
 sha256sum -c SHA256SUMS
-tar -xzf pg_mooncake-0.3.3-source.tar.gz
-cd pg_mooncake-0.3.3
+tar -xzf pg_mooncake-0.3.4-source.tar.gz
+cd pg_mooncake-0.3.4
 ```
 
 To build and install for PostgreSQL 17 on EL10, run:
@@ -137,7 +138,7 @@ make pg_duckdb PG_VERSION=pg17 PG_CONFIG=/usr/pgsql-17/bin/pg_config JOBS=4
 make install PG_VERSION=pg17 PG_CONFIG=/usr/pgsql-17/bin/pg_config JOBS=4
 ```
 
-Skip `make pg_duckdb` only when the matching 1.2.1 binary is already installed.
+Skip `make pg_duckdb` when using your own compatible pg_duckdb installation.
 For Ubuntu / PostgreSQL 18, use `pg18` and `/usr/lib/postgresql/18/bin/pg_config`.
 
 For PostgreSQL 19, install its server development headers and select `pg19`:
@@ -204,16 +205,21 @@ database with mirrors** before switching libraries.
    data change. For an empty mirror, also check that its source is empty.
 3. Stop PostgreSQL cleanly. After the checks in step 2, move the old `_wal` outside the active Moonlink directory
    and retain it with the backup. The new worker refuses a nonempty `_wal`. Install the matched PostgreSQL
-   extension, pg_duckdb and scanner, start PostgreSQL, then run `ALTER EXTENSION pg_duckdb UPDATE TO '1.2.1'`
-   and `ALTER EXTENSION pg_mooncake UPDATE TO '0.3.3'` in each database. Use a fresh session with the matching
+   extension, pg_duckdb and scanner, then start PostgreSQL. In each database update pg_duckdb to match its
+   installed library if needed (the reference build uses `ALTER EXTENSION pg_duckdb UPDATE TO '1.2.2'`),
+   then run `ALTER EXTENSION pg_mooncake UPDATE TO '0.3.4'`. Use a fresh session with the matching
    scanner repository. The SQL update checks the loaded scanner and removes `mooncake.load_files(text,text[])`.
 4. Repeat the source/mirror comparison. Commit one identifiable change at the source, verify it in the mirror and
    take a new snapshot before resuming writers. If the old snapshot or source comparison cannot be established,
    retain the backup and rebuild the affected mirrors from their authoritative sources. If the new binaries
    already ran, a snapshot taken now cannot recover missing old WAL.
 
-PGSTY 0.3.1 and 0.3.2 both have a direct SQL update to 0.3.3. Install the matching libraries and scanner,
-restart PostgreSQL, and run `ALTER EXTENSION pg_mooncake UPDATE TO '0.3.3'` in each database. DuckDB may have cached scanner
+### Upgrading a PGSTY 0.3.1, 0.3.2 or 0.3.3 installation
+
+All three versions have a direct SQL update to 0.3.4. The update from 0.3.3 preserves mirror registrations
+and checks the pg_duckdb minimum and the loaded scanner.
+Install the matching libraries and scanner,
+restart PostgreSQL, and run `ALTER EXTENSION pg_mooncake UPDATE TO '0.3.4'` in each database. DuckDB may have cached scanner
 v0.0.3 or v0.0.4 in its v2.0.1 directory. With the new local `mooncake.extension_repository` configured, refresh
 the cached scanner before the update, then reconnect so the backend loads the new binary.
 
@@ -262,6 +268,10 @@ PGDATABASE=mooncake_integration python3 tests/integration.py --pg-major 17
 PGDATABASE=mooncake_integration python3 tests/integration.py --pg-major 17 --after-restart
 ```
 
+Use `--pg-duckdb-version 1.2.2` to verify the reference pg_duckdb build, or pass the version
+of the package under test. For a scanner built for another DuckDB engine, set `--duckdb-version`
+to its version string (for example, `v2.0.1`).
+
 The integration test compares the mirror with PostgreSQL heap tables before and
 after changes, snapshots, compaction and restart. It also checks filtered scans,
 aggregates, joins, prepared statements, empty tables and cleanup.
@@ -291,12 +301,16 @@ updates and remaining advisories.
 
 ### Updating dependencies
 
-For a new pg_duckdb release, choose the next pg_mooncake release version and
-update `versions.json`, the submodule commits, the SQL version guard and the test
-expectations together. The two PostgreSQL extensions have independent version
-numbers. Both DuckDB submodules must match pg_duckdb's DuckDB
-revision. Pin the DuckDB extension's Moonlink RPC client to the same Moonlink
-commit as the server, tag each changed dependency, update its tag and commit in
+A newer pg_duckdb can be deployed with the current pg_mooncake SQL version. Verify the server starts,
+the scanner loads, and the mirror integration tests pass for the chosen combination. If the embedded
+DuckDB version changes, rebuild and supply the scanner for that engine and platform.
+
+To change the reference build, update the pg_duckdb submodule and its `version` and `revision` in
+`versions.json`. Both DuckDB submodules must match the recorded engine revision. Raise
+`pg_duckdb.minimum_version` and the SQL minimum only when Mooncake needs a newer interface.
+Downstream packages should express the same lower bound.
+
+Pin the DuckDB extension's Moonlink RPC client to the same Moonlink commit as the server, tag each changed dependency, update its tag and commit in
 `versions.json`, regenerate the affected Cargo lockfiles, then rerun
 `make check-versions` and the build/integration tests. From the release commit, run
 `python3 scripts/source_archive.py /path/to/pg_mooncake-VERSION-source.tar.gz` to export the

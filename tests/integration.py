@@ -18,6 +18,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--after-restart", action="store_true")
     parser.add_argument("--pg-major", type=int, choices=range(15, 20), default=18)
+    parser.add_argument("--pg-duckdb-version", help="expected version of the installed pg_duckdb package")
+    parser.add_argument("--duckdb-version", default="v2.0.1", help="DuckDB version targeted by the test scanner")
     args = parser.parse_args()
     with psycopg.connect(autocommit=True, prepare_threshold=None) as conn:
         conn.execute("SET statement_timeout = '120s'")
@@ -34,9 +36,12 @@ def main():
             print(f"PASS: {label}", flush=True)
 
         versions = rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'")
-        assert versions == [("1.2.1",)], versions
+        assert len(versions) == 1, versions
+        if args.pg_duckdb_version:
+            assert versions == [(args.pg_duckdb_version,)], versions
+        print(f"Testing pg_duckdb {versions[0][0]}", flush=True)
         assert int(rows("SHOW server_version_num")[0][0]) // 10000 == args.pg_major
-        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.3",)]
+        assert rows("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'") == [("0.3.4",)]
         if args.after_restart:
             if not rows("SELECT started < pg_postmaster_start_time() FROM mooncake_it.restart_check")[0][0]:
                 raise RuntimeError("PostgreSQL must restart between the two integration phases")
@@ -49,7 +54,7 @@ def main():
                     if "failed to connect to moonlink" not in str(exc) or time.monotonic() >= deadline:
                         raise
                     time.sleep(0.25)
-        assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [("v2.0.1",)]
+        assert rows("SELECT * FROM duckdb.query('SELECT version() AS version')") == [(args.duckdb_version,)]
         assert rows("""
             SELECT * FROM duckdb.query($$
                 SELECT loaded, extension_version FROM duckdb_extensions() WHERE extension_name = 'mooncake'

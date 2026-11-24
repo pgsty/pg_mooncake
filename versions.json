@@ -1,9 +1,10 @@
 {
-  "pg_mooncake": "0.3.3",
+  "pg_mooncake": "0.3.4",
   "pgrx": "0.20.0",
   "pg_duckdb": {
-    "version": "1.2.1",
-    "revision": "451d389a3fe9d179b06172c6a3595d291de7ca76"
+    "version": "1.2.2",
+    "minimum_version": "1.2.1",
+    "revision": "4e921ffbe4a16b3caec6cf24ca0151fa9d88032d"
   },
   "duckdb": {
     "version": "v2.0.1",

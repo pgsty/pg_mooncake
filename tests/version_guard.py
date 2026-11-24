@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify exact pg_duckdb version enforcement in an empty disposable database."""
+"""Exercise the pg_duckdb runtime minimum in an empty disposable database."""
 
 import psycopg
 
@@ -9,24 +9,30 @@ if not __debug__:
 
 with psycopg.connect(autocommit=True) as conn:
     conn.execute("CREATE EXTENSION pg_duckdb")
-    for version in ("1.2.0", "1.3.0"):
-        # Simulate extension catalog drift inside a transaction; the failed
-        # CREATE EXTENSION rolls back both the catalog edit and installation.
+    lookup = "SELECT extversion FROM pg_extension WHERE extname = %s"
+    installed = conn.execute(lookup, ("pg_duckdb",)).fetchone()[0]
+    cases = (
+        ("1.1.99", False), ("1.2.0", False), ("1.2.1-rc.1+build.2", False),
+        ("devel", False), ("1.2", False),
+        ("1.2.1", True), ("1.2.1+build.2", True), ("1.2.2-rc.1", True),
+        ("1.2.2", True), ("1.2.10", True), ("1.10.0", True), ("2.0.0", True),
+    )
+    for version, accepted in cases:
+        # Exercise the SQL check with the real binary; roll back the catalog edit
+        # and CREATE EXTENSION even when the candidate version is accepted.
         try:
-            with conn.transaction():
-                conn.execute(
-                    "UPDATE pg_extension SET extversion = %s WHERE extname = 'pg_duckdb'",
-                    (version,),
-                )
+            with conn.transaction(force_rollback=True):
+                conn.execute("UPDATE pg_extension SET extversion = %s WHERE extname = 'pg_duckdb'", (version,))
                 conn.execute("CREATE EXTENSION pg_mooncake")
-                raise AssertionError(f"pg_duckdb {version} must be rejected")
         except psycopg.errors.FeatureNotSupported as exc:
-            assert "requires pg_duckdb 1.2.1" in str(exc), exc
-        assert conn.execute("SELECT extversion FROM pg_extension WHERE extname = 'pg_duckdb'").fetchone() == ("1.2.1",)
-        assert not conn.execute("SELECT 1 FROM pg_extension WHERE extname = 'pg_mooncake'").fetchall()
-        print(f"PASS: pg_duckdb {version} rejected; catalog restored", flush=True)
+            assert not accepted and "requires pg_duckdb 1.2.1 or newer" in str(exc), exc
+        else:
+            assert accepted, f"pg_duckdb {version} should have been rejected"
+        assert conn.execute(lookup, ("pg_duckdb",)).fetchone() == (installed,)
+        assert conn.execute(lookup, ("pg_mooncake",)).fetchone() is None
+        print(f"PASS: catalog version {version} {'accepted' if accepted else 'rejected'}", flush=True)
     conn.execute("CREATE EXTENSION pg_mooncake")
-    assert conn.execute("SELECT extversion FROM pg_extension WHERE extname = 'pg_mooncake'").fetchone() == ("0.3.3",)
-    print("PASS: pg_mooncake 0.3.3 installed with pg_duckdb 1.2.1", flush=True)
+    assert conn.execute(lookup, ("pg_mooncake",)).fetchone() == ("0.3.4",)
+    print(f"PASS: pg_mooncake 0.3.4 installed with pg_duckdb {installed}", flush=True)
     conn.execute("DROP EXTENSION pg_mooncake CASCADE")
     conn.execute("DROP EXTENSION pg_duckdb")

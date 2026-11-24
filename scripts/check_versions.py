@@ -35,9 +35,14 @@ def main():
     require(capture("pg_duckdb/pg_duckdb.control", r"^default_version = '([^']+)'"), pg_duckdb_version, "pg_duckdb")
     install_sql = f"sql/pg_mooncake--0.3.1--{release}.sql"
     require((ROOT / f"sql/pg_mooncake--0.3.0--{release}.sql").read_bytes(), (ROOT / install_sql).read_bytes(), "direct upgrade SQL")
-    require((ROOT / f"sql/pg_mooncake--0.3.2--{release}.sql").read_text().strip(), (ROOT / install_sql).read_text().split("\n\n", 1)[0], "0.3.2 upgrade dependency checks")
-    require(capture(install_sql, r"installed_version IS DISTINCT FROM '([^']+)'"), pg_duckdb_version, "SQL dependency check")
-    require(capture(install_sql, r"RAISE EXCEPTION 'pg_mooncake ([^']+); installed version"), f"{release} requires pg_duckdb {pg_duckdb_version}", "SQL version message")
+    guard = (ROOT / install_sql).read_text().split("\n\n", 1)[0]
+    for previous in ("0.3.2", "0.3.3"):
+        upgrade = ROOT / f"sql/pg_mooncake--{previous}--{release}.sql"
+        require(upgrade.read_text().strip(), guard, f"{previous} upgrade dependency checks")
+    minimum = versions["pg_duckdb"]["minimum_version"]
+    require(capture(install_sql, r"minimum_version CONSTANT text := '([^']+)'"), minimum, "pg_duckdb runtime minimum")
+    if tuple(map(int, pg_duckdb_version.split("."))) < tuple(map(int, minimum.split("."))):
+        raise ValueError(f"pinned pg_duckdb {pg_duckdb_version} is below runtime minimum {minimum}")
     require(capture(install_sql, r"scanner IS DISTINCT FROM '([^']+)'"), versions["duckdb_mooncake"]["version"], "loaded scanner check")
     require(capture("Makefile", r'^DUCKDB_VERSION := (.+)$'), versions["duckdb"]["version"], "DuckDB build version")
     require(capture("duckdb_mooncake/extension_config.cmake", r'EXTENSION_VERSION (\S+)'), versions["duckdb_mooncake"]["version"], "DuckDB Mooncake version")
@@ -92,7 +97,7 @@ def main():
         subprocess.run(["git", "-C", str(ROOT / "moonlink"), "merge-base", "--is-ancestor", upstream, revision], check=True)
     else:
         print("Source archive: Git revisions cannot be checked; use the recorded source manifest.")
-    print(f"Version checks passed: pg_mooncake {release}, pg_duckdb {pg_duckdb_version}, pgrx {versions['pgrx']}.")
+    print(f"Version checks passed: pg_mooncake {release}, pg_duckdb build {pg_duckdb_version} (runtime >= {minimum}), pgrx {versions['pgrx']}.")
 
 
 if __name__ == "__main__":
